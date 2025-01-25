@@ -1,7 +1,8 @@
-# Tauri + SvelteKit + TypeScript
+# Custom SOOP Clipper
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+SOOP 스트림의 클립을 생성하는 유틸리티입니다.
 
-## Recommended IDE Setup
+기능 구현 예정:
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+- 레거시 클립 (SOOP CLIP API 이용)
+- 캐싱 클립 (자체 플레이리스트 캐싱 및 패칭으로 구현)
