@@ -69,7 +69,7 @@
         if (Hls.isSupported()) {
             const hls = new Hls();
             hls.loadSource(
-                "https://vod-archive-global-cdn-z02.sooplive.co.kr/v102/video/_definst_/smil:vod/20241211/322/279469322/REGL_68938E9F_279469322_1.smil/playlist.m3u8",
+                "https://live-global-cdn-v02.sooplive.co.kr/live-stm-07/auth_playlist.m3u8?aid=.A32.7bbT56vyHM9fKZk.wJqtJfLyrq3EFVSw0q2rZQtS8ysye7tvrp0UyD1dslLX-unoWquR1pLqXayL4bLhY63NwLJW3gq485KeGx-nqmgUqdpuMuDf9dzpDKfMGBHzYYVmRV8qABb7HKI9g55C",
             );
             hls.attachMedia(videoElement);
             hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
@@ -91,7 +91,6 @@
     <video
         id="video"
         poster="https://sveltejs.github.io/assets/caminandes-llamigos.jpg"
-        src="https://vod-archive-global-cdn-z02.sooplive.co.kr/v102/video/_definst_/smil:vod/20241211/322/279469322/REGL_68938E9F_279469322_1.smil/playlist.m3u8"
         bind:currentTime={time}
         bind:duration
         bind:paused
@@ -128,6 +127,10 @@
     on:touchmove|preventDefault={handleMove}
     on:mousedown={handleMousedown}
 ></div>
+
+<div>
+    <a href="./login">로그인</a>
+</div>
 
 <style>
     div {
