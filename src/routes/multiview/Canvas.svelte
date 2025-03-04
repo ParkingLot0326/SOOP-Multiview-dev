@@ -1,5 +1,4 @@
 <script>
-    import { SvelteComponent } from "svelte";
     import Slot from "./Slot.svelte";
     import interact from "interactjs";
 

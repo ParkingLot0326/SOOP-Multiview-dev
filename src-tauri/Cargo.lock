@@ -496,6 +496,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "clipper"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "m3u8-rs",
+ "percent-encoding",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-http",
+ "tauri-plugin-opener",
+ "tokio",
+ "url",
+]
+
+[[package]]
 name = "cocoa"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2206,25 +2225,6 @@ dependencies = [
  "serde",
  "thiserror 1.0.69",
  "windows-sys 0.59.0",
-]
-
-[[package]]
-name = "multiview"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "m3u8-rs",
- "percent-encoding",
- "reqwest",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-http",
- "tauri-plugin-opener",
- "tokio",
- "url",
 ]
 
 [[package]]
