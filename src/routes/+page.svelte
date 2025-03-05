@@ -1,34 +1,12 @@
 <script lang="ts">
-  import Video from "./clip/Video.svelte";
-  import Dashboard from "./dashboard/Dashboard.svelte";
-  import Login from "./login/Login.svelte";
-  import Multiview from "./multiview/Canvas.svelte";
-  import Remux from "./remux/Remux.svelte";
-  import Settings from "./setting/Settings.svelte";
+  import FlexCanvas from "./multiview/FlexCanvas.svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
 
-  let items = [
-    { label: "대쉬보드", value: 1, component: Dashboard },
-    { label: "REMUX", value: 2, component: Remux },
-    { label: "VOD", value: 3, component: Video },
-    { label: "클립", value: 4, component: Video },
-    { label: "설정", value: 5, component: Settings },
-    { label: "멀티뷰", value: 6, component: Multiview },
-  ];
   let activeTabValue = 1;
 
   const appWindow = getCurrentWindow();
 
-  function setActiveTabValue(value: number) {
-    activeTabValue = value;
-  }
-
-  function handleHotKey(e: KeyboardEvent) {
-    if (items.map((e) => String(e.value)).includes(e.key)) {
-      setActiveTabValue(parseInt(e.key));
-      console.log("tab " + e.key + " pressed");
-    }
-  }
+  function handleHotKey(e: KeyboardEvent) {}
 </script>
 
 <div style="display: flex; flex-direction: column; height: 100%;">
@@ -73,36 +51,7 @@
   </div>
 
   <div style="display: flex; flex-direction: column; height: 100%;">
-    <ul>
-      {#each items as item}
-        <li class={activeTabValue === item.value ? "active" : ""}>
-          <span
-            on:click={() => setActiveTabValue(item.value)}
-            role="button"
-            tabindex="0"
-            on:keydown={() => {}}
-          >
-            {item.label}
-          </span>
-        </li>
-      {/each}
-    </ul>
-    <!-- <div
-        on:click={() => (location.href = "/login")}
-        role="button"
-        tabindex="0"
-        on:keydown={() => {}}
-        class="profile-avatar"
-      >
-        로그인
-      </div> -->
-    <div style="height:100%;width:100% padding: 8px; background-color: #eeeeee">
-      {#each items as item}
-        {#if activeTabValue == item.value}
-          <svelte:component this={item.component} />
-        {/if}
-      {/each}
-    </div>
+    <FlexCanvas />
   </div>
 </div>
 
@@ -154,41 +103,5 @@
   }
   .titlebar-button:hover {
     background: #5bbec3;
-  }
-  ul {
-    display: flex;
-    flex-wrap: wrap;
-    padding-left: 0;
-    padding-bottom: 0px;
-    padding-top: 6px;
-    border-bottom: 1px solid #495057;
-    margin: 0;
-    list-style: none;
-  }
-
-  span {
-    background-color: #d9d9d9;
-    color: #525252;
-    padding: 6px 20px;
-    border: none;
-    border-top-left-radius: 8px;
-    border-top-right-radius: 8px;
-    font-size: 14pt;
-    font-family: "Pretendard";
-    font-weight: 500;
-    cursor: pointer;
-    user-select: none;
-  }
-
-  li {
-    padding: 0;
-    margin: 0;
-    display: flex;
-    align-items: center;
-  }
-  li.active > span {
-    color: black;
-    background-color: #eeeeee;
-    border-color: #dee2e6 #dee2e6 #fff;
   }
 </style>

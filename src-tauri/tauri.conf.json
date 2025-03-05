@@ -13,8 +13,10 @@
     "windows": [
       {
         "title": "clipper",
-        "width": 800,
-        "height": 600,
+        "width": 640,
+        "height": 490,
+        "minWidth": 640,
+        "minHeight": 490,
         "decorations": false
       }
     ],
