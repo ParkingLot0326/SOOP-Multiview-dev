@@ -464,6 +464,7 @@ fn build_stream_response(
 
             for segment in original_playlist.segments {
                 if segment.uri.contains("preloading") {
+                    println!("Skipping preloading segment: {}", segment.uri);
                     continue;
                 }
 

@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onMount, onDestroy } from "svelte";
     import { LiveRequest } from "./live";
     import Hls from "hls.js";
 
@@ -18,13 +18,20 @@
     let volume: number;
     let paused: boolean;
 
+    let hls = new Hls();
+
+    export let child;
+
     onMount(() => {
         hideAllLayer;
     });
 
+    onDestroy(() => {
+        hls.destroy();
+    });
+
     function hideAllLayer() {
-        let layers: NodeListOf<HTMLElement> =
-            document.querySelectorAll(".layer");
+        let layers = [url_input_layer, additional_info_layer, player_layer];
         layers.forEach((layer) => {
             layer.style.display = "none";
         });
@@ -85,8 +92,8 @@
     }
 
     async function set_video(url: string, aid: string) {
-        let hls = new Hls();
-        let proxy_url = `http://proxy.localhost/stream?url=${encodeURIComponent(url)}&method=GET&query=${JSON.stringify({ aid: aid })}`;
+        let proxy_url = `http://proxy.localhost/stream?url=${encodeURIComponent(url)}&method=GET&query=${encodeURIComponent(JSON.stringify({ aid: aid }))}`;
+        hls.lowLatencyMode = true;
         hls.loadSource(proxy_url);
         hls.attachMedia(videoElement);
         hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
@@ -95,9 +102,11 @@
                     data.levels.length +
                     " quality level",
             );
-            videoElement.play();
-            volume = 0;
         });
+        videoElement.volume = 0;
+
+        console.log(hls.media?.src);
+        console.log(hls);
         // videoElement.load();
     }
 </script>
@@ -113,7 +122,7 @@
             <button
                 on:click={() => {
                     init_w_url(player_url);
-                }}>입장</button
+                }}>입장 #{child.id}</button
             >
         </div>
     </div>
@@ -124,7 +133,7 @@
         bind:this={additional_info_layer}
     >
         <div class="quality-wrapper">
-            <div class="quality" style="display:none">dummy</div>
+            <div class="quality" style="display:none"></div>
         </div>
         <input type="text" class="password-input" placeholder="password" />
     </div>
@@ -136,7 +145,6 @@
             bind:duration
             bind:volume
             bind:paused
-            controls
             autoplay
         >
             <track kind="captions" />
