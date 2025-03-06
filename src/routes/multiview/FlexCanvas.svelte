@@ -5,10 +5,13 @@
     const THRESHOLDWIDTH = 880;
     const MINHEIGHT = 360;
 
-    let canvas = document.getElementById("canvas");
+    let canvas: HTMLElement;
     let chatWrapper: HTMLElement;
     let isChatOpen = false;
     let logicChatOpen = false;
+
+    let main_volume: number = 0.5;
+    let sub_volume: number = 0.5;
 
     function closeChat() {
         isChatOpen = false;
@@ -19,11 +22,6 @@
         isChatOpen = true;
         logicChatOpen = true;
     }
-
-    let children = [];
-    let idCounter = 1;
-
-    children = [...children, { id: idCounter }];
 
     onresize = () => {
         if (window.innerWidth < 880) {
@@ -36,9 +34,28 @@
     };
 </script>
 
-<div class="flex-canvas" id="canvas">
+<div class="flex-canvas" bind:this={canvas}>
     <div class="favorite-bar">fav</div>
-    <div class="volume-control">vol</div>
+    <div class="volume-control">
+        <div>메인 볼륨</div>
+        <input
+            type="range"
+            min="0"
+            max="1"
+            class="slider"
+            id="main-volume"
+            bind:value={main_volume}
+        />
+        <div>서브 볼륨</div>
+        <input
+            type="range"
+            min="0"
+            max="1"
+            class="slider"
+            id="sub-volume"
+            bind:value={sub_volume}
+        />
+    </div>
     <div class="chat-wrapper" bind:this={chatWrapper}>
         <button class="close-button" on:click={closeChat}>X</button>
         <div class="chat-control">ChatCon</div>
@@ -53,46 +70,15 @@
         </div>
     </div>
     <live class="live" id="main">
-        {#each children as child (child.id)}
-            <Live {child} />
-        {/each}
+        <Live bind:volume={main_volume} />
         <button class="close-button" on:click={openChat}>Open Chat</button>
     </live>
-
-    <live class="live" id="sub1">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S1
-    </live>
-
-    <live class="live" id="sub2">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S2
-    </live>
-
-    <live class="live" id="sub3">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S3
-    </live>
-
-    <live class="live" id="sub4">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S4
-    </live>
-
-    <live class="live" id="sub5">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S5
-    </live>
-
-    <live class="live" id="sub6">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S6
-    </live>
-
-    <live class="live" id="sub7">
-        <button class="close-button" on:click={openChat}>Open Chat</button>
-        S7
-    </live>
+    {#each Array(7) as _, i}
+        <live class="live" id={`sub${i + 1}`}>
+            <button class="close-button" on:click={openChat}>Open Chat</button>
+            <Live bind:volume={sub_volume} />
+        </live>
+    {/each}
 </div>
 
 <style>
@@ -119,9 +105,34 @@
     }
 
     .volume-control {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-rows: 1fr 1fr;
+        gap: 10px;
+        flex-direction: column;
         grid-column: 4 / span 1;
         grid-row: 1;
         background-color: #f0f0f0;
+    }
+
+    .volume-control div:nth-child(1) {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .volume-control div:nth-child(2) {
+        grid-column: 2;
+        grid-row: 1;
+    }
+
+    .volume-control div:nth-child(3) {
+        grid-column: 1;
+        grid-row: 2;
+    }
+
+    .volume-control div:nth-child(4) {
+        grid-column: 2;
+        grid-row: 2;
     }
 
     .chat-wrapper {

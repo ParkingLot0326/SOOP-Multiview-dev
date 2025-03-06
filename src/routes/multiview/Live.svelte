@@ -15,8 +15,8 @@
     let videoElement: HTMLVideoElement;
     let time: number;
     let duration: number;
-    let volume: number;
     let paused: boolean;
+    export let volume: number;
 
     let hls = new Hls();
 
