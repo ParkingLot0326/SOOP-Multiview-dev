@@ -1,37 +1,93 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import { LiveRequest } from "./live";
     import Hls from "hls.js";
+    import { Level } from "hls.js";
 
-    let live: LiveRequest;
-    let player_url: string;
-    let url_input_layer: HTMLElement;
-    let additional_info_layer: HTMLElement;
+    let input_layer: HTMLElement;
+    let setting_layer: HTMLElement;
     let player_layer: HTMLElement;
-
-    let quality = "original";
-    let password: string;
+    let error_layer: HTMLElement;
 
     let videoElement: HTMLVideoElement;
     let time: number;
     let duration: number;
     let paused: boolean;
-    export let volume: number;
+    let videoHeight: number;
+
+    let qualities: [string, Level][];
+    let selectedQuality: Level | string;
+
+    let settingShown: boolean = false;
+    let setting_content: HTMLElement;
 
     let hls = new Hls();
 
-    export let child;
+    let volume_percent: number;
+    let volume: number;
+    $: {
+        volume = volume_percent / 100;
+        console.log(volume);
+    }
+
+    let timeoutID;
+    let errorCount = 0;
+
+    export let idx: number;
+    export let onPopUp: (idx: number) => void;
+    export let onMoveClick: (idx: number) => void;
+    export let register;
 
     onMount(() => {
+        if (register) {
+            register(idx, set_video);
+        }
+
+        const preventContextMenu = (event) => {
+            event.preventDefault();
+        };
+        document.addEventListener("contextmenu", preventContextMenu);
         hideAllLayer;
+
+        return () => {
+            document.removeEventListener("contextmenu", preventContextMenu);
+        };
     });
 
     onDestroy(() => {
         hls.destroy();
     });
 
+    function showPopup(e: MouseEvent) {
+        onPopUp(idx);
+    }
+
+    function toggleSettings() {
+        if (settingShown) {
+            settingShown = false;
+            setting_content.style.display = "none";
+            setting_layer.style.opacity = "0";
+        } else {
+            settingShown = true;
+            setting_content.style.display = "flex";
+            setting_layer.style.opacity = "1";
+        }
+        return false;
+    }
+
+    function onQualityChange() {
+        if (typeof selectedQuality == "string") {
+            hls.nextLevel = -1;
+            return;
+        } else {
+            let targetLevelIdx = hls.levels.findIndex((level) => {
+                return level.height == selectedQuality.height;
+            });
+            hls.nextLevel = targetLevelIdx;
+        }
+    }
+
     function hideAllLayer() {
-        let layers = [url_input_layer, additional_info_layer, player_layer];
+        let layers = [input_layer, error_layer, player_layer];
         layers.forEach((layer) => {
             layer.style.display = "none";
         });
@@ -46,54 +102,10 @@
         layer.style.display = "flex";
     }
 
-    async function init_w_url(url: string) {
-        live = new LiveRequest(url);
+    let errorMsg: string;
 
-        await live.post_live_info();
-
-        if (live.liveInfo?.BPWD == "Y") {
-            showLayer(additional_info_layer);
-        } else {
-            await live.get_playlist(quality, password).then((res) => {
-                set_video(res![0]!, res![1]!);
-            });
-
-            showLayer(player_layer);
-        }
-    }
-
-    function set_password() {
-        let password_input: HTMLInputElement | null =
-            document.querySelector(".password-input");
-        password = password_input!.value;
-    }
-
-    function check_password() {
-        let password_input: HTMLInputElement | null =
-            document.querySelector(".password-input");
-        // let quality_select_wrapper: HTMLElement | null =
-        //     document.querySelector(".quality-wrapper");
-
-        // live.liveInfo?.VIEWPRESET?.forEach((quality) => {
-        //     let option = document.createElement("div");
-        //     option.setAttribute("class", "quality");
-        //     option.innerText = quality.name;
-        //     quality_select_wrapper!.appendChild(option);
-        //     console.log(quality.label);
-        // });
-
-        if (live.liveInfo?.BPWD == "Y") {
-            try {
-                password_input!.disabled = false;
-            } catch {}
-        } else {
-            password_input!.disabled = true;
-        }
-    }
-
-    async function set_video(url: string, aid: string) {
-        let proxy_url = `http://proxy.localhost/stream?url=${encodeURIComponent(url)}&method=GET&query=${encodeURIComponent(JSON.stringify({ aid: aid }))}`;
-        hls.lowLatencyMode = true;
+    export async function set_video(proxy_url: string) {
+        // hls.lowLatencyMode = true;
         hls.loadSource(proxy_url);
         hls.attachMedia(videoElement);
         hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
@@ -102,49 +114,171 @@
                     data.levels.length +
                     " quality level",
             );
+            qualities = data.levels.map((level) => {
+                return [level.height + "p", level];
+            });
         });
-        videoElement.volume = 0;
+        videoElement.load();
+        showLayer(player_layer);
 
-        console.log(hls.media?.src);
-        console.log(hls);
-        // videoElement.load();
+        hls.on(Hls.Events.FRAG_LOADED, function (event, data) {
+            streamTimeout();
+        });
+
+        hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
+            console.log("level switched", data.level);
+        });
+
+        hls.on(Hls.Events.ERROR, function (event, data) {
+            if (data.fatal) {
+                switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        console.error("A network error occurred", data);
+                        showError(
+                            "스트림 요청 과정에서 오류가 발생했습니다. 다시 시도해 주세요.",
+                        );
+                        break;
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        console.error("A media error occurred", data);
+                        showError(
+                            "스트림을 불러오는 중 오류가 발생했습니다. 다시 시도해 주세요.",
+                        );
+                        break;
+                    default:
+                        console.error("An unrecoverable error occurred", data);
+                        showError(
+                            "알 수 없는 오류가 발생했습니다.\n문제가 계속될 경우 개발자에게 문의해 주세요.",
+                        );
+                        flush();
+                        break;
+                }
+            } else {
+                switch (data.type) {
+                    case Hls.ErrorTypes.MEDIA_ERROR:
+                        errorCount++;
+                        if (errorCount > 5) {
+                            showError(
+                                "스트림을 불러오는 중 오류가 발생했습니다. 다시 시도해 주세요.",
+                            );
+                            flush();
+                        }
+                        break;
+                }
+                console.error("An Error Occurred: ", data);
+            }
+        });
+    }
+
+    function showError(msg: string) {
+        errorMsg = msg;
+        clearTimeout(timeoutID);
+        showLayer(error_layer);
+    }
+
+    function flush() {
+        errorCount = 0;
+        if (settingShown) {
+            toggleSettings();
+        }
+        hls.detachMedia();
+        hls.stopLoad();
+        showLayer(input_layer);
+        console.log("flushed!");
+        clearTimeout(timeoutID);
+    }
+
+    function streamTimeout() {
+        clearTimeout(timeoutID);
+        timeoutID = setTimeout(() => {
+            console.error("Stream Timeout..Flushing Stream..");
+            flush();
+        }, 10000);
     }
 </script>
 
 <div class="wrapper">
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-        class="url-input layer"
-        style="display:flex"
-        bind:this={url_input_layer}
+        class="setting layer"
+        style="opacity:0;"
+        bind:this={setting_layer}
+        on:contextmenu={toggleSettings}
     >
-        <div>
+        <div
+            class="setting-content"
+            bind:this={setting_content}
+            style="display:none;"
+        >
+            <div style="display:flex; justify-content:start; gap:8px;">
+                <div>볼륨</div>
+                <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    bind:value={volume_percent}
+                />
+            </div>
+            <div style="display:flex; justify-content:start; gap:8px;">
+                <div>화질</div>
+                <select
+                    name="quality"
+                    class="quality-select"
+                    bind:value={selectedQuality}
+                    on:change={onQualityChange}
+                >
+                    <option value="auto">자동</option>
+                    {#each qualities as quality}
+                        <option value={quality[1]}>{quality[0]}</option>
+                    {/each}
+                </select>
+            </div>
+
+            <button on:click={flush}>종료</button>
+        </div>
+    </div>
+
+    <div class="input layer" style="display:flex;" bind:this={input_layer}>
+        <!-- <div>
             <input type="text" placeholder="방송 URL" bind:value={player_url} />
             <button
                 on:click={() => {
                     init_w_url(player_url);
-                }}>입장 #{child.id}</button
+                }}>입장</button
             >
-        </div>
+        </div> -->
+        <button
+            on:click={showPopup}
+            style="width:100%; height:100%; border: 0px; cursor: pointer;background-color:transparent;"
+        >
+            추가</button
+        >
     </div>
 
+    <div class="error layer" style="display:none" bind:this={error_layer}>
+        <div class="error-label">
+            {errorMsg}
+        </div>
+        <button class="error-button" on:click={flush}>돌아가기</button>
+    </div>
+
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
-        class="additional-info layer"
+        class="player layer"
         style="display:none"
-        bind:this={additional_info_layer}
+        bind:this={player_layer}
+        on:click={() => {
+            onMoveClick(idx);
+        }}
+        on:contextmenu={toggleSettings}
     >
-        <div class="quality-wrapper">
-            <div class="quality" style="display:none"></div>
-        </div>
-        <input type="text" class="password-input" placeholder="password" />
-    </div>
-
-    <div class="player layer" style="display:none" bind:this={player_layer}>
         <video
             bind:this={videoElement}
             bind:currentTime={time}
             bind:duration
             bind:volume
             bind:paused
+            bind:videoHeight
             autoplay
         >
             <track kind="captions" />
@@ -158,11 +292,11 @@
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        min-height: 200px;
         width: 100%;
         height: 100%;
         background-color: white;
         opacity: 1;
+        border: 1px solid black;
     }
 
     .layer {
@@ -174,12 +308,53 @@
         height: 100%;
     }
 
-    .additional-info {
+    .setting {
+        pointer-events: none;
+        position: absolute;
+        flex-grow: 1;
+        width: 200px;
+        height: 100px;
+        background-color: rgba(219, 219, 219, 0.8);
+        backdrop-filter: blur(15px);
+        z-index: 500;
+        transition: all 0.1s;
+        border-radius: 1rem;
+    }
+
+    .setting-content {
         display: flex;
         flex-direction: column;
         justify-content: center;
         align-items: center;
-        flex-grow: 1;
+        gap: 6px;
+    }
+
+    .setting > * {
+        pointer-events: auto;
+    }
+
+    .error {
+        position: absolute;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        width: 200px;
+        height: 100px;
+        border-radius: 1rem;
+        background-color: rgb(255, 55, 55);
+        color: white;
+        backdrop-filter: blur(15px);
+    }
+
+    .error > button {
+        width: 100px;
+    }
+
+    .quality-select {
+        border-radius: 4px;
     }
 
     .player {
@@ -194,26 +369,5 @@
         width: 100%;
         height: 100%;
         flex-grow: 1;
-        border: 1px solid black;
-    }
-
-    .password-input {
-        height: 30px;
-    }
-
-    .quality-wrapper {
-        display: flex;
-        flex-grow: 1;
-        flex-direction: column;
-        width: 100%;
-        gap: 4px;
-        color: black;
-    }
-
-    .quality {
-        width: 100%;
-        background-color: lightgray;
-        border: 1px solid black;
-        color: black;
     }
 </style>
