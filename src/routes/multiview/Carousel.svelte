@@ -1,9 +1,9 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import type { itemInfo } from "./subStatus";
+    import type { carouselItemInfo } from "./carouselItemInfo";
 
     // 슬라이더에 표시할 아이템들을 props로 받을 수 있습니다
-    export let items: itemInfo[] = [];
+    export let items: carouselItemInfo[] = [];
 
     let carousel: HTMLDivElement;
     let containerWidth = 0;
@@ -75,7 +75,7 @@
         }
     }
 
-    function selectItem(id: itemInfo["id"]) {
+    function selectItem(id: carouselItemInfo["id"]) {
         if (selectedID == id) {
             deselectItem();
         } else {
