@@ -1,7 +1,7 @@
 <script lang="ts">
     import Carousel from "./Carousel.svelte";
     import { LiveRequest } from "./live";
-    import { itemInfo } from "./subStatus";
+    import { carouselItemInfo } from "./carouselItemInfo";
 
     let overlay: HTMLElement;
     let popup: HTMLElement;
@@ -20,11 +20,11 @@
     export let isPopupOpening: boolean = false;
     export let isPopupOpen: boolean = false;
 
-    let items: itemInfo[] = [
+    let items: carouselItemInfo[] = [
         // new itemInfo("1", "테스트1"),
         // new itemInfo("1", "테스트1"),
     ];
-    let selectedItem: itemInfo;
+    let selectedItem: carouselItemInfo;
     $: {
         selectedItem = items.filter((val) => {
             return val.id == ImgSelectionID;

@@ -61,10 +61,13 @@ export class ChatSocket {
             switch (msgArr[1].substring(0, 4)) {
                 case "0001":
                     console.log("INIT")
+                    break;
                 case "0002":
                     console.log("JOIN")
+                    break;
                 case "0005":
                     console.log(data)
+                    break;
             }
         }
 
