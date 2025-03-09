@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self' proxy: http: https: data: localhost:; script-src 'self'; style-src 'self';"
+      "csp": "default-src 'self' proxy: http: https: data: localhost:; media-src 'self' blob: http: https: localhost:; connect-src 'self' blob: http: https: localhost:;"
     }
   },
   "bundle": {
