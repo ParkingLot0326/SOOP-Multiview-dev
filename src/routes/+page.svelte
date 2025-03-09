@@ -1,15 +1,8 @@
 <script lang="ts">
   import FlexCanvas from "./multiview/FlexCanvas.svelte";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
-
-  let activeTabValue = 1;
-
-  const appWindow = getCurrentWindow();
-
-  function handleHotKey(e: KeyboardEvent) {}
 </script>
 
-<div style="display: flex; flex-direction: column; height: 100%;">
+<!-- <div style="display: flex; flex-direction: column; height: 100%;">
   <div data-tauri-drag-region class="titlebar">
     <div class="window-title">
       <img
@@ -17,7 +10,7 @@
         alt="icon"
         style="color: black;width: 20px; height: 20px; margin-right: 5px;"
       />
-      MultiDownloader
+      SOOP Multiview
     </div>
     <div style="display:flex; justify-content: flex-end;">
       <button
@@ -49,17 +42,15 @@
       </button>
     </div>
   </div>
-
-  <div style="display: flex; flex-direction: column; height: 100%;">
-    <FlexCanvas />
-  </div>
+</div> -->
+<div style="position:absolute; top:0; left:0; right:0; bottom:0;">
+  <FlexCanvas />
 </div>
-
-<svelte:window on:keydown={handleHotKey} />
 
 <style>
   :root {
     font-family: "Pretendard";
+    box-sizing: border-box;
   }
 
   :root::-webkit-scrollbar {
