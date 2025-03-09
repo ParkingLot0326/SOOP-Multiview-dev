@@ -1,6 +1,7 @@
 export interface LiveInfoResponse {
     RESULT: number;
     VIEWPRESET?: ViewPreset[];
+    BJID?: string;
     BNO?: number;
     BJNICK?: string;
     CHATNO?: number;
@@ -21,7 +22,7 @@ export interface LiveInfoResponse {
 }
 interface ViewPreset {
     label: string;
-    label_resolution: string;
+    label_resolution: number;
     name: string;
     bps: number;
 }

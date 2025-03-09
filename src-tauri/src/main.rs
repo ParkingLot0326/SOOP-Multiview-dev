@@ -1,7 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use m3u8_rs::{MediaPlaylist, MediaSegment};
+use m3u8_rs::{MasterPlaylist, MediaPlaylist, MediaSegment};
 use reqwest::{
     blocking::{Client as BlockingClient, Response as BlockingResponse},
     header::{HeaderMap, HeaderName, HeaderValue},
@@ -13,6 +13,7 @@ use tauri::{
     http::{self, Response as TauriResponse},
     State,
 };
+use urlencoding::encode;
 
 use std::{
     collections::HashMap,
@@ -71,11 +72,11 @@ fn create_client() -> Client {
         HeaderValue::from_static("https://play.sooplive.co.kr/"),
     );
     headers.insert(
-        "User-Agent",
-        HeaderValue::from_static(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        ),
-    );
+            "User-Agent",
+            HeaderValue::from_static(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            ),
+        );
     headers.insert("Accept", HeaderValue::from_static("*/*"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("deflate, br"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
@@ -97,11 +98,11 @@ fn create_blocking_client() -> BlockingClient {
         HeaderValue::from_static("https://play.sooplive.co.kr/"),
     );
     headers.insert(
-        "User-Agent",
-        HeaderValue::from_static(
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        ),
-    );
+            "User-Agent",
+            HeaderValue::from_static(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            ),
+        );
     headers.insert("Accept", HeaderValue::from_static("*/*"));
     headers.insert("Accept-Encoding", HeaderValue::from_static("deflate, br"));
     headers.insert("Connection", HeaderValue::from_static("keep-alive"));
@@ -161,8 +162,6 @@ async fn get_stream_url(
     cdn: &str,
     quality: String,
 ) -> Result<String, String> {
-    let broad_key: String = format!("{}-common-{}-hls", bno, quality);
-
     let mut stream_url_body = HashMap::new();
 
     let cdn_val = match cdn {
@@ -171,6 +170,8 @@ async fn get_stream_url(
         _ => "gcp_cdn",
     }
     .to_string();
+
+    let broad_key: String = format!("{}-common-{}-hls", bno, quality);
     // let cdn_val: String = String::from("gcp_cdn");
     // .to_string();
 
@@ -184,7 +185,6 @@ async fn get_stream_url(
         .await
         .map_err(|e: Error| format!("Error from Fetching Stream URL: {}", e))?;
     let stream_body = stream_url_response.json::<Value>().await;
-    println!("Stream URL Response: {:?}", stream_body);
 
     let stream_url: String = stream_body
         .map_err(|e: Error| format!("Error from Decoding Stream URL Body: {}", e))?
@@ -324,7 +324,7 @@ fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
         Some(headers) => {
             let decoded_headers = percent_decode_str(headers).decode_utf8().unwrap();
             let temp_map: Map<String, Value> =
-                serde_json::from_str(&decoded_headers).expect("Failed to parse headers");
+                serde_json::from_str(&decoded_headers).unwrap_or(Map::new());
 
             let mut header_map = HeaderMap::new();
             for (key, value) in temp_map.iter() {
@@ -343,7 +343,7 @@ fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
         Some(query) => {
             let decoded_query = percent_decode_str(query).decode_utf8().unwrap();
             let query_map: Map<String, Value> =
-                serde_json::from_str(&decoded_query).expect("Failed to parse query");
+                serde_json::from_str(&decoded_query).unwrap_or(Map::new());
             query_map
         }
         None => Map::new(),
@@ -454,31 +454,87 @@ fn build_stream_response(
                 .get(reqwest::header::CONTENT_TYPE)
                 .and_then(|ct| ct.to_str().ok())
                 .unwrap_or("application/octet-stream");
+
             let mut body_bytes = resp.bytes().unwrap();
+            let mut buffer = Vec::new();
 
-            let original_playlist: MediaPlaylist =
-                m3u8_rs::parse_media_playlist_res(&body_bytes).unwrap_or(MediaPlaylist::default());
+            if m3u8_rs::is_master_playlist(&body_bytes) {
+                println!("Master Playlist detected");
 
-            let mut new_playlist: MediaPlaylist = original_playlist.clone();
-            new_playlist.segments.clear();
+                let original_playlist: MasterPlaylist =
+                    m3u8_rs::parse_master_playlist_res(&body_bytes)
+                        .unwrap_or(MasterPlaylist::default());
 
-            for segment in original_playlist.segments {
-                if segment.uri.contains("preloading") {
-                    println!("Skipping preloading segment: {}", segment.uri);
-                    continue;
+                let mut new_playlist: MasterPlaylist = original_playlist.clone();
+                new_playlist.variants.clear();
+
+                let master_uri = url
+                    .rsplit_once('/')
+                    .map_or(url.to_string(), |(base, _)| base.to_string());
+
+                for variant in original_playlist.variants {
+                    let pair = variant
+                        .uri
+                        .as_str()
+                        .trim_end_matches(',')
+                        .split('?')
+                        .collect::<Vec<&str>>();
+
+                    let mut query_val = HashMap::new();
+                    let path = pair[0].to_string();
+
+                    for querypair in pair[1].split('&') {
+                        let tmp = querypair.split('=').collect::<Vec<&str>>();
+                        if tmp.len() >= 2 {
+                            let k = tmp[0];
+                            let v = tmp[1];
+                            query_val.insert(k.to_string(), v.to_string());
+                        }
+                    }
+
+                    let tmp_json = serde_json::to_string(&query_val).unwrap();
+                    let query_string = encode(&tmp_json);
+
+                    let new_uri = format!(
+                        "?url={}/{}&query={}&method=GET",
+                        master_uri, path, query_string,
+                    );
+                    let mut new_variant = variant.clone();
+                    new_variant.uri = new_uri;
+                    new_playlist.variants.push(new_variant);
                 }
 
-                let mut new_segment: MediaSegment = segment.clone();
-                let new_uri = format!("segment?url={}/{}&method=GET", url, segment.uri);
-                new_segment.uri = new_uri;
-                new_playlist.segments.push(new_segment);
-            }
+                if let Err(e) = new_playlist.write_to(&mut buffer) {
+                    let error_msg = format!("Error writing playlist: {}", e);
+                    println!("{}", error_msg);
+                    return build_error_response(500);
+                }
+            } else {
+                let original_playlist: MediaPlaylist =
+                    m3u8_rs::parse_media_playlist_res(&body_bytes)
+                        .unwrap_or(MediaPlaylist::default());
 
-            let mut buffer = Vec::new();
-            if let Err(e) = new_playlist.write_to(&mut buffer) {
-                let error_msg = format!("Error writing playlist: {}", e);
-                println!("{}", error_msg);
-                return build_error_response(500);
+                let mut new_playlist: MediaPlaylist = original_playlist.clone();
+                new_playlist.segments.clear();
+
+                for segment in original_playlist.segments {
+                    if segment.uri.contains("preloading") {
+                        println!("Skipping preloading segment: {}", segment.uri);
+                        continue;
+                    }
+
+                    let mut new_segment: MediaSegment = segment.clone();
+
+                    let new_uri = format!("segment?url={}/{}&method=GET", url, segment.uri);
+                    new_segment.uri = new_uri;
+                    new_playlist.segments.push(new_segment);
+                }
+
+                if let Err(e) = new_playlist.write_to(&mut buffer) {
+                    let error_msg = format!("Error writing playlist: {}", e);
+                    println!("{}", error_msg);
+                    return build_error_response(500);
+                }
             }
 
             body_bytes = Bytes::from(buffer);
@@ -489,6 +545,7 @@ fn build_stream_response(
                 .header("Content-Type", content_type)
                 .body(body_bytes.to_vec())
                 .unwrap();
+
             mod_response
         }
         Err(e) => {
