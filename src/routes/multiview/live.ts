@@ -1,6 +1,6 @@
 
 import { invoke } from '@tauri-apps/api/core';
-import type { LiveInfoResponse } from './LiveInfoResponse';
+import type { LiveInfoResponse } from './liveInfoResponse';
 import { AIDError, PlaylistError } from './liveErrors';
 
 class streamInfo {

@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onMount } from "svelte";
     import { ChatSocket } from "./chat";
-    import type { Key } from "readline";
 
     let chatSocket: ChatSocket | null = null;
     onMount(() => {

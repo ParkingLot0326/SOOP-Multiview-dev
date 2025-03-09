@@ -1,4 +1,4 @@
-import type { LiveInfoResponse } from './LiveInfoResponse';
+import type { LiveInfoResponse } from './liveInfoResponse';
 import { invoke } from '@tauri-apps/api/core';
 
 const FF: string = String.fromCharCode(12)
