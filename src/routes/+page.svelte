@@ -57,7 +57,7 @@
     display: none;
   }
 
-  button {
+  /* button {
     border: none;
   }
   .titlebar {
@@ -94,5 +94,5 @@
   }
   .titlebar-button:hover {
     background: #5bbec3;
-  }
+  } */
 </style>
