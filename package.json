@@ -21,7 +21,8 @@
     "axios": "^1.7.9",
     "hls.js": "^1.5.20",
     "interactjs": "^1.10.27",
-    "m3u8-parser": "^7.2.0"
+    "m3u8-parser": "^7.2.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.6",
