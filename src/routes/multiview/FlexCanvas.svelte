@@ -3,10 +3,19 @@
     import Live from "./Live.svelte";
     import Carousel from "./Carousel.svelte";
     import Popup from "./Popup.svelte";
+    import ChatBubble from "../chat/ChatBubble.svelte";
+    import type { ChatData } from "../chat/chatData";
+
+    import { v4 as uuidv4 } from "uuid";
 
     const MINWIDTH = 640;
     const THRESHOLDWIDTH = 880;
     const MINHEIGHT = 360;
+
+    const uuid = uuidv4().replaceAll("-", "");
+    const guid = uuidv4().replaceAll("-", "").toUpperCase();
+
+    console.log(guid);
 
     let canvas: HTMLElement;
     let popup: Popup;
@@ -16,7 +25,8 @@
 
     let cur_main_index = 0;
 
-    let liveRefs: Map<number, (url: string) => Promise<void>> = new Map();
+    let liveRefs: Map<number, (url: string, bjid: string) => Promise<void>> =
+        new Map();
     liveRefs.clear();
 
     function registerLiveCallback(
@@ -28,31 +38,17 @@
     }
 
     let indexes = [
-        {
-            id: 0,
-        },
-        {
-            id: 1,
-        },
-        {
-            id: 2,
-        },
-        {
-            id: 3,
-        },
-        {
-            id: 4,
-        },
-        {
-            id: 5,
-        },
-        {
-            id: 6,
-        },
-        {
-            id: 7,
-        },
+        { id: 0 },
+        { id: 1 },
+        { id: 2 },
+        { id: 3 },
+        { id: 4 },
+        { id: 5 },
+        { id: 6 },
+        { id: 7 },
     ];
+
+    let registeredStreams: string[] = [];
 
     function closeChat() {
         isChatOpen = false;
@@ -76,9 +72,8 @@
 
     function onSetStream(idx: number, url: string, bjid: string) {
         let func = liveRefs.get(idx);
-        func!(url);
-        console.log(idx);
-        console.log(indexes);
+        func!(url, bjid);
+        registeredStreams.push(bjid);
     }
 
     function onMoveClick(idx: number) {
@@ -125,7 +120,12 @@
 </script>
 
 <div class="flex-canvas" bind:this={canvas}>
-    <Popup bind:popupIdx bind:this={popup} {onSetStream} />
+    <Popup
+        bind:popupIdx
+        bind:this={popup}
+        bind:registeredStreams
+        {onSetStream}
+    />
 
     <div class="favorite-bar">기능 추가 예정입니다...</div>
     <div class="volume-control"></div>
@@ -140,6 +140,8 @@
     {#each indexes as index, i}
         <live class="live-{index.id}">
             <Live
+                {uuid}
+                {guid}
                 idx={i}
                 onPopUp={showPopup}
                 {onMoveClick}
