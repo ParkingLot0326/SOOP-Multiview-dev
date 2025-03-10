@@ -2,6 +2,7 @@
     import { onMount, onDestroy } from "svelte";
     import Hls from "hls.js";
     import { Level } from "hls.js";
+    import { LiveLogger } from "./liveLogger";
 
     let input_layer: HTMLElement;
     let setting_layer: HTMLElement;
@@ -15,7 +16,7 @@
     let videoHeight: number;
 
     let qualities: [string, Level][];
-    let selectedQuality: Level | string;
+    let selectedQuality: Level | undefined;
 
     let settingShown: boolean = false;
     let setting_content: HTMLElement;
@@ -29,13 +30,20 @@
         console.log(volume);
     }
 
-    let timeoutID;
+    let timeoutID: NodeJS.Timeout;
+    let errorMsg: string;
     let errorCount = 0;
 
     export let idx: number;
     export let onPopUp: (idx: number) => void;
     export let onMoveClick: (idx: number) => void;
     export let register;
+
+    export let uuid: string;
+    export let guid: string;
+
+    let liveLogger: LiveLogger;
+    let bjid: string;
 
     onMount(() => {
         if (register) {
@@ -45,9 +53,11 @@
         const preventContextMenu = (event) => {
             event.preventDefault();
         };
+
         document.addEventListener("contextmenu", preventContextMenu);
         hideAllLayer;
 
+        liveLogger = new LiveLogger(uuid, guid);
         return () => {
             document.removeEventListener("contextmenu", preventContextMenu);
         };
@@ -55,6 +65,7 @@
 
     onDestroy(() => {
         hls.destroy();
+        liveLogger.close();
     });
 
     function showPopup(e: MouseEvent) {
@@ -75,14 +86,13 @@
     }
 
     function onQualityChange() {
-        if (typeof selectedQuality == "string") {
-            hls.nextLevel = -1;
-            return;
-        } else {
+        if (selectedQuality) {
             let targetLevelIdx = hls.levels.findIndex((level) => {
-                return level.height == selectedQuality.height;
+                return level.height == selectedQuality!.height;
             });
             hls.nextLevel = targetLevelIdx;
+        } else {
+            hls.nextLevel = -1;
         }
     }
 
@@ -102,13 +112,15 @@
         layer.style.display = "flex";
     }
 
-    let errorMsg: string;
-
-    export async function set_video(proxy_url: string) {
+    export async function set_video(proxy_url: string, bid: string) {
+        bjid = bid;
         // hls.lowLatencyMode = true;
         hls.loadSource(proxy_url);
         hls.attachMedia(videoElement);
-        hls.on(Hls.Events.MANIFEST_PARSED, function (event, data) {
+        videoElement.load();
+        showLayer(player_layer);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
             console.log(
                 "manifest loaded, found " +
                     data.levels.length +
@@ -117,19 +129,20 @@
             qualities = data.levels.map((level) => {
                 return [level.height + "p", level];
             });
-        });
-        videoElement.load();
-        showLayer(player_layer);
 
-        hls.on(Hls.Events.FRAG_LOADED, function (event, data) {
+            liveLogger.initializeWebSocket(bjid);
+        });
+
+        hls.on(Hls.Events.FRAG_LOADED, (event, data) => {
+            console.log("frag loaded");
             streamTimeout();
         });
 
-        hls.on(Hls.Events.LEVEL_SWITCHED, function (event, data) {
+        hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
             console.log("level switched", data.level);
         });
 
-        hls.on(Hls.Events.ERROR, function (event, data) {
+        hls.on(Hls.Events.ERROR, (event, data) => {
             if (data.fatal) {
                 switch (data.type) {
                     case Hls.ErrorTypes.NETWORK_ERROR:
@@ -164,7 +177,7 @@
                         }
                         break;
                 }
-                console.error("An Error Occurred: ", data);
+                console.warn("A NonFatal Error Occurred: ", data);
             }
         });
     }
@@ -183,8 +196,10 @@
         hls.detachMedia();
         hls.stopLoad();
         showLayer(input_layer);
-        console.log("flushed!");
         clearTimeout(timeoutID);
+
+        liveLogger.close();
+        console.log("flushed!");
     }
 
     function streamTimeout() {
@@ -226,7 +241,7 @@
                     bind:value={selectedQuality}
                     on:change={onQualityChange}
                 >
-                    <option value="auto">자동</option>
+                    <option value={undefined}>자동</option>
                     {#each qualities as quality}
                         <option value={quality[1]}>{quality[0]}</option>
                     {/each}
@@ -288,6 +303,7 @@
 
 <style>
     .wrapper {
+        box-sizing: border-box;
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -296,7 +312,7 @@
         height: 100%;
         background-color: white;
         opacity: 1;
-        border: 1px solid black;
+        border-radius: 4px;
     }
 
     .layer {

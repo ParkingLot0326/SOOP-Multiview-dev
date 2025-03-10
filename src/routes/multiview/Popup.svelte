@@ -20,6 +20,8 @@
     export let isPopupOpening: boolean = false;
     export let isPopupOpen: boolean = false;
 
+    export let registeredStreams: string[];
+
     let items: carouselItemInfo[] = [
         // new itemInfo("1", "테스트1"),
         // new itemInfo("1", "테스트1"),
@@ -84,11 +86,17 @@
     export let onSetStream: (idx: number, url: string, id: string) => void;
 
     async function register(info: string, regMode: number) {
-        live.purge();
-        let id = live.setup(info);
+        let bid = live.setup(info);
+
+        if (registeredStreams.includes(bid)) {
+            showError(regMode + 3);
+            live.purge();
+            return;
+        }
+
         try {
             let liveUrl = await live.get_master_stream();
-            onSetStream(popupIdx, liveUrl, id);
+            onSetStream(popupIdx, liveUrl, bid);
         } catch (e) {
             showError(regMode);
             return;
@@ -96,6 +104,7 @@
         hidePopup();
         urlInputVal = "";
         idInputVal = "";
+        live.purge();
     }
 
     function showError(regMode: number) {
@@ -106,6 +115,12 @@
                 break;
             case 1:
                 errorID = "ID가 잘못되었습니다.";
+                break;
+            case 3:
+                errorURL = "이미 등록된 방송을 중복 등록할 수 없습니다";
+                break;
+            case 4:
+                errorID = "이미 등록된 방송을 중복 등록할 수 없습니다.";
                 break;
             default:
                 break;
