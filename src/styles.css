@@ -69,3 +69,27 @@
     font-display: swap;
     src: local('Pretendard Thin'), url(/fonts/Pretendard-Thin.woff2) format('woff2');
 }
+
+@font-face
+{
+    font-family: 'GmarketSans';
+    font-weight: 900;
+    font-display: swap;
+    src: local('GmarketSans Bold'), url(/fonts/GmarketSansTTFBold.ttf) format('truetype');
+}
+
+@font-face
+{
+    font-family: 'GmarketSans';
+    font-weight: 600;
+    font-display: swap;
+    src: local('GmarketSans Medium'), url(/fonts/GmarketSansTTFMedium.ttf) format('truetype');
+}
+
+@font-face
+{
+    font-family: 'GmarketSans';
+    font-weight: 300;
+    font-display: swap;
+    src: local('GmarketSans Light'), url(/fonts/GmarketSansTTFLight.ttf) format('truetype');
+}
