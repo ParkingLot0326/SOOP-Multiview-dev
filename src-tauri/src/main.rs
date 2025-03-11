@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{
     http::{self, Response as TauriResponse},
-    State,
+    Manager, State,
 };
 use urlencoding::encode;
 
@@ -575,6 +575,12 @@ fn main() {
         .manage(client)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
+            println!("다른 인스턴스가 시작되었습니다: {:?}, {:?}", argv, cwd);
+
+            let window = app.get_webview_window("main").unwrap();
+            window.set_focus().unwrap();
+        }))
         .invoke_handler(tauri::generate_handler![
             read_streamers,
             check_live,

@@ -117,19 +117,7 @@ interface CertTicketPacketData {
 }
 
 interface UserCountPacketData {
-    uiBroadNo: number,
-    uiJoinChMBUser: number,
-    uiJoinChPCUser: number,
-    uiMainChMBUser: number,
-    uiMainChPCUser: number,
-    uiMainMBHitUser: number,
-    uiMainPCHitUser: number,
-    uiParentBroadNo: number,
-    uiSubChMBUser: number,
-    uiSubChPCUser: number,
-    uiSubMBHitUser: number,
-    uiSubPCHitUser: number,
-    uiTotClone: number,
+    uiBroadNo: number, uiJoinChUser: number, uiMbUser: number, uiTotChUser: number
 }
 
 
@@ -141,13 +129,20 @@ export class LiveLogger {
     private guid: string;
 
     private ws?: WebSocket;
-    private timeout?: NodeJS.Timeout;
+    private refreshTimeout?: NodeJS.Timeout;
 
-    public userCnt: number = 0;
+    private limiterTimeout?: NodeJS.Timeout;
 
-    constructor(uuid: string, guid: string) {
+    private onUserUpdate: (userCnt: number) => void;
+    private onCrash: (err?: Event) => void;
+
+    private errorCnt: number = 0;
+
+    constructor(uuid: string, guid: string, onUserUpdate: (userCnt: number) => void, onCrash: (err?: Event) => void) {
         this.uuid = uuid
         this.guid = guid.toUpperCase()
+        this.onUserUpdate = onUserUpdate
+        this.onCrash = onCrash
     }
 
     private async post_live_info(): Promise<LiveInfoResponse> {
@@ -164,8 +159,6 @@ export class LiveLogger {
     public async initializeWebSocket(bid: string): Promise<WebSocket | undefined> {
         this.bid = bid
         let info = await this.post_live_info();
-        console.log("LiveInfo Fetched: ", info)
-        console.log(bid)
 
         if (info == undefined || info.GWIP == undefined || info.GWPT == undefined || info.CTIP == undefined || info.CTPT == undefined) {
             console.log("Chat Not Available: LiveInfo Successfully Fetched, but not containing essential data.")
@@ -190,8 +183,6 @@ export class LiveLogger {
 
         ws.onmessage = (ev: MessageEvent<string>) => {
             let packet = JSON.parse(ev.data) as Packet<any>
-
-            console.log("Message Received")
             switch (packet.SVC) {
                 case SVCType.FLASH_LOGIN:
                     {
@@ -199,7 +190,7 @@ export class LiveLogger {
                         break
                     }
                 case SVCType.CERTTICKETEX: {
-                    console.log("CertTicket Issued")
+                    console.log("CertTicket Issued: ", this.bid)
                     let data = packet.DATA as CertTicketPacketData
                     let ticket = data.pcTicket, appdata = data.pcAppendDat
                     ws.send(
@@ -208,21 +199,30 @@ export class LiveLogger {
                         )
                     )
 
-                    setTimeout(() => {
-                        this.timeout = setInterval(() => {
-                            ws.send(JSON.stringify(this.build_KA_packet()))
-                        }, 20000), 20000
-                    })
+                    this.limiterTimeout = setTimeout(() => {
+                        this.close()
+                        this.onCrash()
+                        throw new Error("LiveLogSocket Didn't Respond in Time")
+                    }, 10000)
+
+                    this.refreshTimeout = setInterval(() => {
+                        console.log("KeepAlive Packet Sent: ", this.bid)
+                        ws.send(JSON.stringify(this.build_KA_packet()))
+                    }, 20000)
+
                     break
                 }
-                case SVCType.GETUSERCNTEX:
                 case SVCType.GETUSERCNT:
                     {
-                        console.log("User Count Changed")
+                        if (this.limiterTimeout) { clearTimeout(this.limiterTimeout) }
                         let data = packet.DATA as UserCountPacketData
-                        this.userCnt = data.uiJoinChMBUser + data.uiJoinChPCUser
+                        this.onUserUpdate(data.uiJoinChUser + data.uiMbUser)
                         break
                     }
+                case SVCType.GETUSERCNTEX:
+                case SVCType.JOINCH_COMMON:
+                    if (this.limiterTimeout) { clearTimeout(this.limiterTimeout) }
+                    break
                 default: {
                     console.log("Unrecognized Packet: ", packet)
                     console.log("Packet SVCType: ", packet.SVC)
@@ -235,16 +235,21 @@ export class LiveLogger {
         ws.onerror = (ev: Event) => {
             console.error("Error Occurred From LiveLogSocket: ", ev)
             let bid = this.bid
-            if (ws.readyState == ws.OPEN) ws.close()
+            if (ws.readyState == ws.OPEN) { ws.close() }
             this.ws = undefined
 
-            setTimeout(() => { this.initializeWebSocket(bid!) }, 1000)
+            this.errorCnt += 1
+            if (this.errorCnt < 5) {
+                setTimeout(() => { this.initializeWebSocket(bid!) }, 1000)
+            } else {
+                this.onCrash(ev)
+            }
         }
 
         ws.onclose = (ev: CloseEvent) => {
             console.log("LiveLogSocket Closed: ", ev)
-            if (this.timeout) clearInterval(this.timeout!)
-            this.userCnt = 0
+            if (this.refreshTimeout) { clearInterval(this.refreshTimeout) }
+            this.onUserUpdate(0)
             this.ws = undefined
             this.bid = undefined
         }

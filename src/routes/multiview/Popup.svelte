@@ -15,6 +15,8 @@
     let errorID: string = "";
     let live: LiveRequest = new LiveRequest();
 
+    let overlayShown = false;
+
     export let popupIdx: number = 0;
 
     export let isPopupOpening: boolean = false;
@@ -41,9 +43,8 @@
         isPopupOpening = true;
         isPopupOpen = true;
         popup.style.display = "flex";
-        overlay.style.display = "flex";
+        overlayShown = true;
         popupIdx = idx;
-        console.log(popupIdx);
 
         // 다음 틱에서 플래그 해제 (비동기적으로 실행)
         setTimeout(() => {
@@ -69,8 +70,11 @@
     function hidePopup() {
         clearError();
         popup.style.display = "none";
-        overlay.style.display = "none";
         isPopupOpen = false;
+        overlayShown = false;
+        urlInputVal = "";
+        idInputVal = "";
+        ImgSelectionID = undefined;
     }
 
     function hideInputs() {
@@ -99,6 +103,7 @@
             onSetStream(popupIdx, liveUrl, bid);
         } catch (e) {
             showError(regMode);
+            live.purge();
             return;
         }
         hidePopup();
@@ -108,6 +113,7 @@
     }
 
     function showError(regMode: number) {
+        console.log("error");
         clearError();
         switch (regMode) {
             case 0:
@@ -132,9 +138,13 @@
         errorURL = "";
         errorID = "";
     }
+
+    function removeSpcChar(str: string) {
+        return str.replace(/[^a-zA-Z0-9]/g, "");
+    }
 </script>
 
-<div class="overlay" bind:this={overlay} style="display: none"></div>
+<div class:overlay class:overlay-blur={overlayShown} bind:this={overlay}></div>
 <div class="popup" bind:this={popup} style="display: none">
     <div style=" position:relative; width:100%">
         <Carousel
@@ -173,7 +183,7 @@
                 bind:value={idInputVal}
             /><button
                 on:click={() => {
-                    register(idInputVal, 1);
+                    register(removeSpcChar(idInputVal), 1);
                 }}>확인</button
             >
         </div>
@@ -207,14 +217,19 @@
 
 <style>
     .overlay {
-        pointer-events: all;
+        pointer-events: none;
         position: absolute;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
-        backdrop-filter: blur(0px);
         z-index: 1000;
+        transition: all 0.15s;
+    }
+
+    .overlay-blur {
+        backdrop-filter: blur(4px);
+        background-color: rgba(255, 255, 255, 0.15);
     }
 
     .popup {

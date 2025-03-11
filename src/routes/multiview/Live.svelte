@@ -27,7 +27,6 @@
     let volume: number;
     $: {
         volume = volume_percent / 100;
-        console.log(volume);
     }
 
     let timeoutID: NodeJS.Timeout;
@@ -37,6 +36,7 @@
     export let idx: number;
     export let onPopUp: (idx: number) => void;
     export let onMoveClick: (idx: number) => void;
+    export let onFlush: (bjid: string) => void;
     export let register;
 
     export let uuid: string;
@@ -44,6 +44,7 @@
 
     let liveLogger: LiveLogger;
     let bjid: string;
+    let userCount: number = 0;
 
     onMount(() => {
         if (register) {
@@ -57,7 +58,7 @@
         document.addEventListener("contextmenu", preventContextMenu);
         hideAllLayer;
 
-        liveLogger = new LiveLogger(uuid, guid);
+        liveLogger = new LiveLogger(uuid, guid, onUserUpdate, onCrash);
         return () => {
             document.removeEventListener("contextmenu", preventContextMenu);
         };
@@ -67,6 +68,15 @@
         hls.destroy();
         liveLogger.close();
     });
+
+    function onCrash() {
+        showError("서버와의 동기화가 끊어져 스트림을 종료했습니다.");
+        flush();
+    }
+
+    function onUserUpdate(userCnt: number) {
+        userCount = userCnt;
+    }
 
     function showPopup(e: MouseEvent) {
         onPopUp(idx);
@@ -134,7 +144,6 @@
         });
 
         hls.on(Hls.Events.FRAG_LOADED, (event, data) => {
-            console.log("frag loaded");
             streamTimeout();
         });
 
@@ -198,8 +207,9 @@
         showLayer(input_layer);
         clearTimeout(timeoutID);
 
+        onFlush(bjid);
         liveLogger.close();
-        console.log("flushed!");
+        console.warn("flushed!");
     }
 
     function streamTimeout() {
@@ -261,12 +271,7 @@
                 }}>입장</button
             >
         </div> -->
-        <button
-            on:click={showPopup}
-            style="width:100%; height:100%; border: 0px; cursor: pointer;background-color:transparent;"
-        >
-            추가</button
-        >
+        <button on:click={showPopup}>방송 추가하기</button>
     </div>
 
     <div class="error layer" style="display:none" bind:this={error_layer}>
@@ -298,6 +303,12 @@
         >
             <track kind="captions" />
         </video>
+        <div class="user_count_wrap">
+            <div class="rec"></div>
+            <div class="user-count">
+                {userCount}
+            </div>
+        </div>
     </div>
 </div>
 
@@ -310,7 +321,7 @@
         align-items: center;
         width: 100%;
         height: 100%;
-        background-color: white;
+        background-color: rgba(0, 0, 0, 0.25);
         opacity: 1;
         border-radius: 4px;
     }
@@ -349,6 +360,17 @@
         pointer-events: auto;
     }
 
+    .input > button {
+        width: calc(100%);
+        height: calc(100%);
+        border-radius: 4px;
+        border: 0;
+        cursor: pointer;
+        font-family: "Pretendard";
+        font-size: calc(0.8rem + 0.4vw + 0.4vh);
+        font-weight: 600;
+    }
+
     .error {
         position: absolute;
         display: flex;
@@ -378,6 +400,31 @@
         flex-grow: 1;
         justify-content: center;
         align-items: center;
+        background-color: transparent;
+    }
+
+    .rec {
+        width: 8px;
+        height: 8px;
+        background-color: red;
+        border-radius: 50%;
+    }
+
+    .user_count_wrap {
+        display: flex;
+        align-items: center;
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        background-color: hsla(0, 0%, 0%, 0.5);
+        border-radius: 10px;
+        height: 20px;
+        padding: 4px 6px;
+        gap: 4px;
+    }
+    .user-count {
+        position: relative;
+        color: rgb(255, 255, 255);
     }
 
     video {

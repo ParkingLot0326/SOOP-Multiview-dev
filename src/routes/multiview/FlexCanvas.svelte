@@ -84,6 +84,14 @@
         console.log(indexes);
     }
 
+    function onFlush(bjid: string) {
+        if (registeredStreams.includes(bjid)) {
+            registeredStreams = registeredStreams.filter((val) => {
+                return val != bjid;
+            });
+        }
+    }
+
     function swap(i: number, j: number) {
         // 배열의 두 요소를 구조 분해 할당으로 스왑합니다.
         [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
@@ -144,6 +152,7 @@
                 {guid}
                 idx={i}
                 onPopUp={showPopup}
+                {onFlush}
                 {onMoveClick}
                 register={registerLiveCallback}
             />
