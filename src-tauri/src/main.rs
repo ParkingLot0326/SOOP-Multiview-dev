@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{
     http::{self, Method as HttpMethod, Response as TauriResponse},
-    Manager, State,
+    Manager,
 };
 use urlencoding::encode;
 
@@ -424,14 +424,12 @@ fn main() {
     let client = create_client();
     initialize().expect("초기화에 실패했습니다.");
     tauri::Builder::default()
-        .plugin(tauri_plugin_store::Builder::new().build())
         .register_uri_scheme_protocol("proxy", move |_app_handle, request| {
             custom_protocol(request)
         })
         .manage(client)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             println!("다른 인스턴스가 시작되었습니다: {:?}, {:?}", argv, cwd);
 
