@@ -4,13 +4,13 @@
 use m3u8_rs::{MasterPlaylist, MediaPlaylist, MediaSegment};
 use reqwest::{
     blocking::{Client as BlockingClient, Response as BlockingResponse},
-    header::{HeaderMap, HeaderName, HeaderValue},
-    Client, Error, Response as ReqwestResponse,
+    header::{HeaderMap, HeaderValue},
+    Client, Error,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{
-    http::{self, Response as TauriResponse},
+    http::{self, Method as HttpMethod, Response as TauriResponse},
     Manager, State,
 };
 use urlencoding::encode;
@@ -118,118 +118,6 @@ pub struct Body {
     bid: String,
 }
 
-#[tauri::command]
-async fn check_live(client: State<'_, Client>, bid: String) -> Result<Value, String> {
-    // let body = Body { bid: bid };
-
-    println!("Checking live status for bid: {}", bid);
-    let mut body = HashMap::new();
-    body.insert("bid", &bid);
-
-    let response = client
-        .post("https://live.sooplive.co.kr/afreeca/player_live_api.php")
-        .form(&body)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let res: Value;
-    match response.status() {
-        reqwest::StatusCode::OK => {
-            let json_response = response.json::<Value>().await.map_err(|e| {
-                format!("Fetch was successful, but error occured: {}", e.to_string())
-            })?;
-
-            res = json_response.get("CHANNEL").unwrap().clone();
-        }
-        reqwest::StatusCode::NOT_FOUND => {
-            println!("Received response status: 404 Not Found");
-            return Err("404 Not Found".to_string());
-        }
-        other => {
-            println!("Received response status: {:?}", other);
-            return Err("Unknown error".to_string());
-        }
-    }
-
-    return Ok(res);
-}
-
-#[tauri::command]
-async fn get_stream_url(
-    client: State<'_, Client>,
-    bno: String,
-    cdn: &str,
-    quality: String,
-) -> Result<String, String> {
-    let mut stream_url_body = HashMap::new();
-
-    let cdn_val = match cdn {
-        "gs_cdn" => "gs_cdn_pc_web",
-        "gcp_cdn" => "gcp_cdn",
-        _ => "gcp_cdn",
-    }
-    .to_string();
-
-    let broad_key: String = format!("{}-common-{}-hls", bno, quality);
-    // let cdn_val: String = String::from("gcp_cdn");
-    // .to_string();
-
-    stream_url_body.insert("return_type", &cdn_val);
-    stream_url_body.insert("broad_key", &broad_key);
-
-    let stream_url_response: ReqwestResponse = client
-        .get("https://livestream-manager.sooplive.co.kr/broad_stream_assign.html")
-        .query(&stream_url_body)
-        .send()
-        .await
-        .map_err(|e: Error| format!("Error from Fetching Stream URL: {}", e))?;
-    let stream_body = stream_url_response.json::<Value>().await;
-
-    let stream_url: String = stream_body
-        .map_err(|e: Error| format!("Error from Decoding Stream URL Body: {}", e))?
-        .get("view_url")
-        .unwrap()
-        .to_string();
-
-    println!("Stream URL: {}", stream_url);
-    return Ok(stream_url.trim_matches('"').to_string());
-}
-
-#[tauri::command]
-async fn post_aid(
-    client: State<'_, Client>,
-    bno: String,
-    quality: String,
-    password: String,
-) -> Result<String, String> {
-    let mut aid_body: HashMap<&str, &str> = HashMap::new();
-    aid_body.insert("type", "aid");
-    aid_body.insert("bno", &bno);
-    aid_body.insert("quality", &quality);
-    aid_body.insert("pwd", &password);
-
-    let aid_key_response: ReqwestResponse = client
-        .post("https://live.sooplive.co.kr/afreeca/player_live_api.php")
-        .form(&aid_body)
-        .send()
-        .await
-        .map_err(|e: Error| format!("Error from Fetching AID Key: {}", e))?;
-
-    let aid_key: String = aid_key_response
-        .json::<Value>()
-        .await
-        .map_err(|e: Error| format!("Error from Decoding AID Key Body: {}", e))?
-        .get("CHANNEL")
-        .unwrap()
-        .get("AID")
-        .unwrap()
-        .to_string();
-
-    println!("AID Key: {}", aid_key);
-    return Ok(aid_key.trim_matches('"').to_string());
-}
-
 #[derive(Deserialize, serde::Serialize)]
 struct Streamer {
     bjnick: String,
@@ -273,19 +161,15 @@ fn parse_proxy_request(uri: &str) -> Result<HashMap<String, String>, String> {
         return Err("URL 파라미터가 없습니다.".to_string());
     }
 
-    if !params.contains_key("method") {
-        return Err("Method 파라미터가 없습니다.".to_string());
-    }
-
     Ok(params)
 }
 
 fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
+    let method: HttpMethod = request.method().to_owned();
     // 요청 URI 파싱 및 파라미터 추출
     let params: HashMap<String, String> = match parse_proxy_request(&request.uri().to_string()) {
         Ok(params) => params,
         Err(e) => {
-            println!("요청 파싱 오류: {}", e);
             return TauriResponse::builder()
                 .status(500)
                 .header("Content-Type", "text/plain")
@@ -307,37 +191,7 @@ fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
         }
     };
 
-    let method = match params.get("method") {
-        Some(method) => method,
-        None => {
-            let error_msg = "Method 파라미터가 없습니다.";
-            println!("{}", error_msg);
-            return TauriResponse::builder()
-                .status(500)
-                .header("Content-Type", "text/plain")
-                .body(error_msg.as_bytes().to_vec())
-                .unwrap();
-        }
-    };
-
-    let headers = match params.get("headers") {
-        Some(headers) => {
-            let decoded_headers = percent_decode_str(headers).decode_utf8().unwrap();
-            let temp_map: Map<String, Value> =
-                serde_json::from_str(&decoded_headers).unwrap_or(Map::new());
-
-            let mut header_map = HeaderMap::new();
-            for (key, value) in temp_map.iter() {
-                if let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) {
-                    if let Ok(header_value) = HeaderValue::from_str(value.as_str().unwrap()) {
-                        header_map.insert(header_name, header_value);
-                    }
-                }
-            }
-            header_map
-        }
-        None => HeaderMap::new(),
-    };
+    let headers = request.headers().to_owned();
 
     let query = match params.get("query") {
         Some(query) => {
@@ -355,6 +209,7 @@ fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
     let response: TauriResponse<Vec<u8>> = match request.uri().path() {
         "/stream" => build_stream_response(client, url, headers, query),
         "/stream/segment" => build_response(client, url, method, headers, query),
+        "/auth" => build_response(client, url, method, headers, query),
         _ => build_response(client, url, method, headers, query),
     };
 
@@ -423,13 +278,13 @@ fn handle_response(resp: Result<BlockingResponse, reqwest::Error>) -> TauriRespo
 fn build_response(
     client: BlockingClient,
     url: &str,
-    method: &str,
+    method: HttpMethod,
     headers: HeaderMap,
     query: Map<String, Value>,
 ) -> TauriResponse<Vec<u8>> {
     let response: Result<BlockingResponse, Error> = match method {
-        "GET" => client.get(url).headers(headers).query(&query).send(),
-        "POST" => client.post(url).headers(headers).form(&query).send(),
+        HttpMethod::GET => client.get(url).headers(headers).query(&query).send(),
+        HttpMethod::POST => client.post(url).headers(headers).form(&query).send(),
         _ => {
             return build_error_response(400); // 400 Bad Request for invalid method
         }
@@ -569,24 +424,21 @@ fn main() {
     let client = create_client();
     initialize().expect("초기화에 실패했습니다.");
     tauri::Builder::default()
+        .plugin(tauri_plugin_store::Builder::new().build())
         .register_uri_scheme_protocol("proxy", move |_app_handle, request| {
             custom_protocol(request)
         })
         .manage(client)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             println!("다른 인스턴스가 시작되었습니다: {:?}, {:?}", argv, cwd);
 
             let window = app.get_webview_window("main").unwrap();
             window.set_focus().unwrap();
         }))
-        .invoke_handler(tauri::generate_handler![
-            read_streamers,
-            check_live,
-            get_stream_url,
-            post_aid
-        ])
+        .invoke_handler(tauri::generate_handler![read_streamers])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

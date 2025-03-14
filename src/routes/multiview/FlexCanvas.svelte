@@ -1,10 +1,11 @@
 <script lang="ts">
-    import { onMount } from "svelte";
+    import { onDestroy, onMount } from "svelte";
     import Live from "./Live.svelte";
     import Carousel from "./Carousel.svelte";
     import Popup from "./Popup.svelte";
     import ChatBubble from "../chat/ChatBubble.svelte";
     import type { ChatData } from "../chat/chatData";
+    import Sidebar from "./Sidebar.svelte";
 
     import { v4 as uuidv4 } from "uuid";
     import type { LiveInfoResponse } from "./LiveInfoResponse";
@@ -20,9 +21,10 @@
 
     let canvas: HTMLElement;
     let popup: Popup;
-    let chatWrapper: HTMLElement;
-    let isChatOpen = false;
-    let logicChatOpen = false;
+    let liveWrapper: HTMLElement;
+
+    let doFixMainVol = false;
+    let doFixQuality = false;
 
     let cur_main_index = 0;
 
@@ -50,18 +52,6 @@
 
     let registeredStreams: string[] = [];
 
-    function closeChat() {
-        isChatOpen = false;
-        chatWrapper.style.display = "none";
-        logicChatOpen = false;
-    }
-
-    function openChat() {
-        isChatOpen = true;
-        chatWrapper.style.display = "flex";
-        logicChatOpen = true;
-    }
-
     function showPopup(idx: number) {
         popup.showPopup(idx);
     }
@@ -79,8 +69,7 @@
     function onMoveClick(idx: number) {
         swap(cur_main_index, idx);
         cur_main_index = idx;
-        console.log("swap!");
-        console.log("swap idx: ", idx);
+        console.log("swaped Main with idx: ", idx);
         console.log(indexes);
     }
 
@@ -99,21 +88,6 @@
         indexes = [...indexes];
         console.log("indexes: ", indexes);
     }
-
-    onresize = () => {
-        console.log(window.innerWidth);
-        if (window.innerWidth <= THRESHOLDWIDTH) {
-            isChatOpen = false;
-            chatWrapper.style.display = "none";
-            console.log("chat closed");
-        } else {
-            if (logicChatOpen == true) {
-                isChatOpen = true;
-                chatWrapper.style.display = "flex";
-                console.log("chat Opened");
-            }
-        }
-    };
 
     let popupIdx: number = 0;
 
@@ -135,15 +109,11 @@
         {onSetStream}
     />
 
-    <div class="favorite-bar">기능 추가 예정입니다...</div>
-    <div class="volume-control"></div>
-    <div class="chat-wrapper" bind:this={chatWrapper} style="display: none">
-        <button class="close-button" on:click={closeChat}>X</button>
-        <div class="chat-control">ChatCon</div>
-        <div class="chat-area">
-            <div class="chat-display">ChatDispl</div>
-            <div class="chat-input" style:display="none">ChatIn</div>
-        </div>
+    <div class="sidebar n"></div>
+    <div class="sidebar s"></div>
+    <div class="sidebar w"></div>
+    <div class="sidebar e">
+        <Sidebar liveWrap={liveWrapper} bind:doFixMainVol bind:doFixQuality />
     </div>
     <div
         class="live-wrapper"
@@ -152,29 +122,29 @@
             console.log(liveWrapper.clientWidth);
         }}
     >
-    {#each indexes as index, i}
-        <live class="live-{index.id}">
-            <Live
+        {#each indexes as index, i}
+            <live class="live-{index.id}">
+                <Live
                     idx={i}
-                {uuid}
-                {guid}
-                {onFlush}
-                {onMoveClick}
+                    {uuid}
+                    {guid}
+                    {onFlush}
+                    {onMoveClick}
                     {showPopup}
                     {register}
-            />
-            <!-- <button class="close-button" on:click={openChat}>Open Chat</button> -->
-        </live>
-    {/each}
+                />
+                <!-- <button class="close-button" on:click={openChat}>Open Chat</button> -->
+            </live>
+        {/each}
     </div>
 </div>
 
 <style>
     .flex-canvas {
-        position: relative;
+        position: absolute;
         display: grid;
-        height: 100vh;
-        width: 100vw;
+        height: 100%;
+        width: 100%;
 
         grid-template-columns: auto minmax(960px, 1fr) auto;
         grid-template-rows: auto minmax(602px, 1fr) auto;
