@@ -1,5 +1,4 @@
-import type { LiveInfoResponse } from './liveInfoResponse';
-import { invoke } from '@tauri-apps/api/core';
+import type { LiveInfoResponse } from './LiveInfoResponse';
 
 const DC1 = "\u0011"
 const DC2 = "\u0012"
@@ -124,13 +123,11 @@ interface UserCountPacketData {
 
 export class LiveLogger {
 
-    private bid?: string;
     private uuid: string;
     private guid: string;
 
     private ws?: WebSocket;
     private refreshTimeout?: NodeJS.Timeout;
-
     private limiterTimeout?: NodeJS.Timeout;
 
     private onUserUpdate: (userCnt: number) => void;
@@ -145,22 +142,8 @@ export class LiveLogger {
         this.onCrash = onCrash
     }
 
-    private async post_live_info(): Promise<LiveInfoResponse> {
-        try {
-            return await invoke<object>(
-                "check_live",
-                { bid: this.bid }) as LiveInfoResponse;
-        }
-        catch (err) {
-            throw new Error(`Error from Rust: ${err}`)
-        }
-    }
-
-    public async initializeWebSocket(bid: string): Promise<WebSocket | undefined> {
-        this.bid = bid
-        let info = await this.post_live_info();
-
-        if (info == undefined || info.GWIP == undefined || info.GWPT == undefined || info.CTIP == undefined || info.CTPT == undefined) {
+    public async initializeWebSocket(info: LiveInfoResponse): Promise<WebSocket | undefined> {
+        if (info.GWIP == undefined || info.GWPT == undefined || info.CTIP == undefined || info.CTPT == undefined) {
             console.log("Chat Not Available: LiveInfo Successfully Fetched, but not containing essential data.")
             console.debug("LiveInfo was: ", info)
             return
@@ -171,7 +154,7 @@ export class LiveLogger {
             this.ws = undefined
         }
 
-        let ws = new WebSocket("wss://bridge.sooplive.co.kr/Websocket/" + this.bid, ["bridge"]);
+        let ws = new WebSocket("wss://bridge.sooplive.co.kr/Websocket/" + info.BJID, ["bridge"]);
         this.ws = ws
 
         ws.onopen = () => {
@@ -190,7 +173,7 @@ export class LiveLogger {
                         break
                     }
                 case SVCType.CERTTICKETEX: {
-                    console.log("CertTicket Issued: ", this.bid)
+                    console.log("CertTicket Issued: ", info.BJID)
                     let data = packet.DATA as CertTicketPacketData
                     let ticket = data.pcTicket, appdata = data.pcAppendDat
                     ws.send(
@@ -206,7 +189,7 @@ export class LiveLogger {
                     }, 10000)
 
                     this.refreshTimeout = setInterval(() => {
-                        console.log("KeepAlive Packet Sent: ", this.bid)
+                        console.log("KeepAlive Packet Sent: ", info.BJID)
                         ws.send(JSON.stringify(this.build_KA_packet()))
                     }, 20000)
 
@@ -234,13 +217,12 @@ export class LiveLogger {
 
         ws.onerror = (ev: Event) => {
             console.error("Error Occurred From LiveLogSocket: ", ev)
-            let bid = this.bid
             if (ws.readyState == ws.OPEN) { ws.close() }
             this.ws = undefined
 
             this.errorCnt += 1
             if (this.errorCnt < 5) {
-                setTimeout(() => { this.initializeWebSocket(bid!) }, 1000)
+                setTimeout(() => { this.initializeWebSocket(info) }, 1000)
             } else {
                 this.onCrash(ev)
             }
@@ -251,12 +233,11 @@ export class LiveLogger {
             if (this.refreshTimeout) { clearInterval(this.refreshTimeout) }
             this.onUserUpdate(0)
             this.ws = undefined
-            this.bid = undefined
         }
     }
 
     public close() {
-        if (this.ws) this.ws.close()
+        if (this.ws) { this.ws.close() }
     }
 
     private build_KA_packet(): Packet<{}> {

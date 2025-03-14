@@ -1,7 +1,7 @@
 
-import { invoke } from '@tauri-apps/api/core';
-import type { LiveInfoResponse } from './liveInfoResponse';
+import type { LiveInfoResponse } from './LiveInfoResponse';
 import { AIDError, PlaylistError } from './liveErrors';
+import { proxy_url } from '../utils/util';
 
 class streamInfo {
     uri: string;
@@ -16,7 +16,8 @@ class streamInfo {
         this.resolution = resolution;
     }
 }
-export class LiveRequest {
+
+export class LiveFetcher {
     private _liveInfo?: LiveInfoResponse | undefined;
 
     public get liveInfo(): LiveInfoResponse | undefined {
@@ -26,15 +27,6 @@ export class LiveRequest {
     private set liveInfo(value: LiveInfoResponse | undefined) {
         this._liveInfo = value;
     }
-
-    private bid?: string;
-    private bno?: string;
-
-    private AID?: string;
-    private playlist_url?: string
-
-    private quality?: string
-    private password?: string
 
     private _quality_mapping = new Map(
         [
@@ -50,128 +42,70 @@ export class LiveRequest {
         return this._quality_mapping
     }
 
+    private async get_stream_url(info: LiveInfoResponse, quality: string): Promise<string> {
+        let cdn_val: string;
 
-    public setup(input: string): string {
-
-        if (this.checkUrl(input)) {
-            input = input.replaceAll("https://", "http://")
-            input = input.replaceAll("http://", "")
-            let url_arr = input.split("/")
-
-            this.bid = url_arr[1];
-            if (url_arr.length > 2) {
-                this.bno = url_arr[2] as string;
-            }
-        } else if (input.split(" ").length == 1) {
-            this.bid = input
-        } else {
-            throw new Error("Invalid URL or BJID")
+        switch (info.CDN) {
+            case "gs_cdn": { cdn_val = "gs_cdn_pc_web"; break; };
+            case "gcp_cdn": { cdn_val = "gcp_cdn"; break; };
+            default: { cdn_val = "gs_cdn_pc_web"; break; };
         }
 
-        console.log("bid: ", this.bid, "bno: ", this.bno)
-        return this.bid
+        const broad_key: string = `${info.BNO}-common-${quality}-hls`
+
+        const stream_url_res = await fetch(
+            proxy_url({ url: GET_STREAM_URL, query: { "return_type": cdn_val, "broad_key": broad_key } })
+        )
+
+        return stream_url_res
+            .json()
+            .then((data) => {
+                return data.get("view_url") as string
+            })
+            .catch((err) => { throw new Error(`Error from Fetching: ${err}`) })
     }
 
-    private checkUrl(strUrl: string) {
-        return strUrl.includes("play.sooplive.co.kr")
-        // let expUrl = /^http[s]?:\/\/([\S]{3,})/i;
-        // let test1 = expUrl.test(strUrl);
+    private async post_aid_key(info: LiveInfoResponse, quality: string, password: string) {
+        const aid_key_res = await fetch(
+            proxy_url({ url: LIVE_CHECK }), {
+            method: "POST",
+            headers: {
+                "Origin": "https://live.sooplive.co.kr",
+                "Referer": "https://live.sooplive.co.kr/",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
+            body: JSON.stringify({ "type": "aid", "bno": info.BNO, "quality": quality, "pwd": password })
+        })
 
-        // let test2 = strUrl.includes("play.sooplive.co.kr")
+        return aid_key_res
+            .json()
+            .then((data) => { return data.get("CHANNEL").get("AID") as string })
+            .catch((err) => { throw new Error(`Error from Fetching: ${err}`) })
     }
 
-    private async post_live_info() {
-        const live_info: Promise<void | object> = invoke<object>(
-            "check_live",
-            { bid: this.bid }).catch((error) => { console.error(error); });
-        try {
-            let liveInfo = await live_info as LiveInfoResponse;
+    public async post_live_playlist(info: LiveInfoResponse, quality?: string, password?: string) {
+        quality = quality || "master"
+        password = password || ""
 
-            liveInfo.BJID = this.bid;
-            this.bno = liveInfo.BNO ? liveInfo.BNO.toString() : undefined;
-            return liveInfo
-        }
-        catch (error) {
-            throw new Error(`Error from Rust: ${error}`)
-        }
+        const stream_url = await this.get_stream_url(info, quality).catch((err) => { throw new PlaylistError(err) });
+        const aid_key = await this.post_aid_key(info, quality, password).catch((err) => { throw new AIDError(err) });
+
+        return proxy_url({ url: stream_url, path: "stream", query: { "aid": aid_key } })
     }
 
-    private async post_live_playlist(quality: string, password?: string) {
-
-        if (password == undefined) {
-            password = "";
-        }
-
-        if (this.liveInfo == undefined) {
-            this.liveInfo = await this.post_live_info()
-        } else if (this.liveInfo?.CDN == undefined || this.liveInfo.BNO == undefined) {
-            throw new Error("Essential Data not found")
-        }
-
-        let aid_key: string | void;
-        let stream_url: string | void;
-        try {
-            stream_url = await invoke<string>("get_stream_url", { bno: this.bno, cdn: this.liveInfo!.CDN, quality: quality });
-        } catch (error) {
-            throw new PlaylistError(error as string)
-        }
-        try {
-            aid_key = await invoke<string>("post_aid", { bno: this.bno, quality: quality, password: password });
-        } catch (error) {
-            throw new AIDError(error as string)
-        }
-
-        if (stream_url == undefined || aid_key == undefined) {
-            throw new Error("Failed to get stream url or aid key")
-        }
-
-        return [stream_url, aid_key]
-    }
-
-    public async get_playlist(quality?: string, password?: string) {
-        if (quality == this.quality && password == this.password && this.playlist_url != undefined) {
-            return this.playlist_url
-        }
-
-        this.quality = quality;
-        this.password = password;
-
-        if (password == undefined) {
-            password = ""
-        }
-
-        if (quality == undefined) {
-            quality = "master"
-        }
-
-        let pair = await this.post_live_playlist(quality as string, password as string)
-        return this.reconstruct_url(pair[0], pair[1])
-
-    }
-
-    private reconstruct_url(stream_url: string, aid_key: string) {
-        return `http://proxy.localhost/stream?url=${encodeURIComponent(stream_url)}&method=GET&query=${encodeURIComponent(JSON.stringify({ aid: aid_key }))}`
-    }
-
-    public async get_master_stream(password?: string) {
-        if (password == undefined) {
-            password = ""
-        }
+    public async get_master_stream(info: LiveInfoResponse, password?: string): Promise<string> {
+        password = password || ""
 
         let master_playlist = '#EXTM3U\n';
-        if (this.liveInfo == undefined) {
-            this.liveInfo = await this.post_live_info()
-        }
         try {
             let streams = []
-            for (let preset of this.liveInfo!.VIEWPRESET!) {
+            for (let preset of info.VIEWPRESET!) {
                 if (preset.name == "auto") { continue }
 
                 console.log("loading preset of: ", preset.name)
-                let pair = await this.post_live_playlist(preset.name, password)
                 streams.push(
                     new streamInfo(
-                        this.reconstruct_url(pair[0], pair[1]),
+                        await this.post_live_playlist(info, preset.name, password),
                         preset.name,
                         this.quality_mapping.get(preset.label) as number,
                         `${preset.label_resolution * 16 / 9}x${preset.label_resolution}`
@@ -189,13 +123,7 @@ export class LiveRequest {
     }
 
     public purge() {
-        this.bid = undefined
-        this.bno = undefined
         this.liveInfo = undefined
-        this.AID = undefined
-        this.quality = undefined
-        this.password = undefined
-        this.playlist_url = undefined
     }
 
 }

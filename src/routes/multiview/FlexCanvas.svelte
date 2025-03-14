@@ -7,6 +7,7 @@
     import type { ChatData } from "../chat/chatData";
 
     import { v4 as uuidv4 } from "uuid";
+    import type { LiveInfoResponse } from "./LiveInfoResponse";
 
     const MINWIDTH = 640;
     const THRESHOLDWIDTH = 880;
@@ -25,16 +26,15 @@
 
     let cur_main_index = 0;
 
-    let liveRefs: Map<number, (url: string, bjid: string) => Promise<void>> =
+    let liveRefs: Map<number, (info: LiveInfoResponse) => Promise<void>> =
         new Map();
     liveRefs.clear();
 
-    function registerLiveCallback(
+    function register(
         id: number,
-        component: (url: string) => Promise<void>,
+        component: (info: LiveInfoResponse) => Promise<void>,
     ) {
         liveRefs.set(id, component);
-        console.log(liveRefs);
     }
 
     let indexes = [
@@ -70,10 +70,10 @@
         popup.handleClick(e);
     }
 
-    function onSetStream(idx: number, url: string, bjid: string) {
+    function onSetStream(idx: number, info: LiveInfoResponse) {
         let func = liveRefs.get(idx);
-        func!(url, bjid);
-        registeredStreams.push(bjid);
+        func!(info);
+        registeredStreams.push(info.BJID!);
     }
 
     function onMoveClick(idx: number) {
@@ -145,20 +145,28 @@
             <div class="chat-input" style:display="none">ChatIn</div>
         </div>
     </div>
+    <div
+        class="live-wrapper"
+        bind:this={liveWrapper}
+        on:resize={() => {
+            console.log(liveWrapper.clientWidth);
+        }}
+    >
     {#each indexes as index, i}
         <live class="live-{index.id}">
             <Live
+                    idx={i}
                 {uuid}
                 {guid}
-                idx={i}
-                onPopUp={showPopup}
                 {onFlush}
                 {onMoveClick}
-                register={registerLiveCallback}
+                    {showPopup}
+                    {register}
             />
             <!-- <button class="close-button" on:click={openChat}>Open Chat</button> -->
         </live>
     {/each}
+    </div>
 </div>
 
 <style>
@@ -168,8 +176,8 @@
         height: 100vh;
         width: 100vw;
 
-        grid-template-columns: repeat(4, minmax(240px, 1fr)) auto;
-        grid-template-rows: 70px repeat(4, minmax(135px, 1fr));
+        grid-template-columns: auto minmax(960px, 1fr) auto;
+        grid-template-rows: auto minmax(602px, 1fr) auto;
     }
 
     .flex-canvas > * {
@@ -178,10 +186,23 @@
         align-items: center;
     }
 
-    .favorite-bar {
-        grid-column: 1 / span 3;
-        grid-row: 1;
-        background-color: #f0f0f0;
+    .live-wrapper {
+        display: grid;
+        grid-row: 2;
+        grid-column: 2;
+        grid-template-columns: repeat(4, minmax(220px, 1fr));
+        grid-template-rows: repeat(4, minmax(115px, 1fr));
+        gap: 4px;
+        padding: 4px;
+        min-width: 960px;
+        background-color: rgb(156, 156, 156);
+    }
+    .live-wrapper > * {
+        height: 100%;
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
     }
 
     .volume-control {
@@ -199,8 +220,8 @@
         display: flex;
         position: relative;
         flex-direction: column;
-        grid-column: 5 / span 1;
-        grid-row: 1 / span 5;
+        grid-column: 3 / span 1;
+        grid-row: 1 / span 3;
         background-color: #f0f0f0;
         min-width: 240px;
     }
@@ -229,40 +250,60 @@
 
     .live-0 {
         grid-column: 1 / span 3;
-        grid-row: 2 / span 3;
+        grid-row: 1 / span 3;
     }
 
     .live-1 {
         grid-column: 4;
-        grid-row: 2;
+        grid-row: 1;
     }
 
     .live-2 {
         grid-column: 4;
-        grid-row: 3;
+        grid-row: 2;
     }
 
     .live-3 {
         grid-column: 4;
-        grid-row: 4;
+        grid-row: 3;
     }
 
     .live-4 {
         grid-column: 1;
-        grid-row: 5;
+        grid-row: 4;
     }
 
     .live-5 {
         grid-column: 2;
-        grid-row: 5;
+        grid-row: 4;
     }
     .live-6 {
         grid-column: 3;
-        grid-row: 5;
+        grid-row: 4;
     }
 
     .live-7 {
         grid-column: 4;
-        grid-row: 5;
+        grid-row: 4;
+    }
+    .sidebar {
+        background-color: white;
+    }
+
+    .sidebar.n {
+        grid-column: 1 / -1;
+        grid-row: 1;
+    }
+    .sidebar.s {
+        grid-column: 1 / -1;
+        grid-row: -2;
+    }
+    .sidebar.e {
+        grid-column: -2;
+        grid-row: 1 / -1;
+    }
+    .sidebar.w {
+        grid-column: 1;
+        grid-row: 1 / -1;
     }
 </style>

@@ -1,19 +1,16 @@
-import type { LiveInfoResponse } from './liveInfoResponse';
-import { invoke } from '@tauri-apps/api/core';
+import type { LiveInfoResponse } from './LiveInfoResponse';
 
 const FF: string = String.fromCharCode(12)
 const ESC: string = String.fromCharCode(27)
 
 export class ChatSocket {
-    private bid: string;
-    private bno: string;
     private websocket: WebSocket | null = null;
     private PingPacket: string = `${ESC}000000000100${FF}`
-    private COOKIE: string;
 
-    constructor(private cookie: string, private url: string) {
-        [this.bid, this.bno] = this.parse_url(url)
-        this.COOKIE = cookie
+    public onMessage: () => void;
+
+    constructor(onMessage: () => void) {
+        this.onMessage = onMessage
     }
 
     private makeInitPacket = (cookie: string) => {
@@ -24,36 +21,16 @@ export class ChatSocket {
         return `${ESC}0002${(chatno.length + 6).toString().padStart(6, '0')}00${FF}${chatno}${FF}${FF}${FF}${FF}${FF}`
     }
 
-    private parse_url = (url: string) => {
-        let tempArr = url.split("/")
-
-        return [tempArr[0], tempArr[1].split("?")[0]]
-    }
-
-    private async post_live_info(): Promise<LiveInfoResponse> {
-        try {
-            return await invoke<object>(
-                "check_live",
-                { bid: this.bid }).catch((error) => { console.error(error) }) as LiveInfoResponse;
-        } catch (err) {
-            throw new Error(`Error from Rust: ${err}`)
-        }
-    }
-
-    private validate_info(info: LiveInfoResponse): boolean {
-        return info.CHATNO == undefined || info.CHDOMAIN == undefined || info.CHPT == undefined ? false : true
-    }
-
-    public async initializeWebSocket(): Promise<boolean> {
-        const info = await this.post_live_info();
-
+    public async initializeWebSocket(info: LiveInfoResponse, cookie: any): Promise<boolean> {
         if (info.CHATNO == undefined || info.CHDOMAIN == undefined || info.CHPT == undefined) {
             console.log("Chat Not Available: LiveInfo Successfully Fetched, but not containing essential data.")
             console.debug("LiveInfo was: ", info)
             return false
         }
 
-        this.websocket = new WebSocket(`wss://${info.CHDOMAIN}:${info.CHPT}/Websocket/${this.bid}`, ["chat"]);
+        cookie = cookie instanceof String ? cookie : encodeURIComponent(JSON.stringify(cookie));
+
+        this.websocket = new WebSocket(`wss://${info.CHDOMAIN}:${info.CHPT}/Websocket/${info.BJID}`, ["chat"]);
 
         this.websocket.onmessage = (event) => {
             const data = event.data
@@ -71,7 +48,7 @@ export class ChatSocket {
             }
         }
 
-        this.websocket.send(this.makeInitPacket(this.COOKIE))
+        this.websocket.send(this.makeInitPacket(cookie))
         this.websocket.send(this.makeJoinPacket(info.CHATNO.toString()))
 
         setInterval(() => {
@@ -88,6 +65,12 @@ export class ChatSocket {
             );
         } else {
             throw new Error("WebSocket is not open.")
+        }
+    }
+
+    public close() {
+        if (this.websocket) {
+            this.websocket.close()
         }
     }
 }

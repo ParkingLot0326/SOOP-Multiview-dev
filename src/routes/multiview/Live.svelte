@@ -3,6 +3,9 @@
     import Hls from "hls.js";
     import { Level } from "hls.js";
     import { LiveLogger } from "./liveLogger";
+    import type { LiveInfoResponse } from "./LiveInfoResponse";
+    import { ChatSocket } from "./chat";
+    import { LiveFetcher } from "./live";
 
     let input_layer: HTMLElement;
     let setting_layer: HTMLElement;
@@ -21,7 +24,22 @@
     let settingShown: boolean = false;
     let setting_content: HTMLElement;
 
-    let hls = new Hls();
+    let hls = new Hls({
+        startLevel: -1,
+        autoStartLoad: true,
+        levelLoadingRetryDelay: 100,
+        levelLoadingMaxRetry: 20,
+        levelLoadingMaxRetryTimeout: 20000,
+        lowLatencyMode: false,
+        liveBackBufferLength: 10,
+        initialLiveManifestSize: 1,
+        ignoreDevicePixelRatio: true,
+        liveSyncDuration: 2,
+        liveMaxLatencyDuration: 12,
+        maxStarvationDelay: 4,
+        maxAudioFramesDrift: 0,
+        nudgeMaxRetry: 20,
+    });
 
     let volume_percent: number;
     let volume: number;
@@ -33,23 +51,40 @@
     let errorMsg: string;
     let errorCount = 0;
 
+    let liveInfo: LiveInfoResponse | undefined;
+
     export let idx: number;
-    export let onPopUp: (idx: number) => void;
+    export let showPopup: (idx: number) => void;
     export let onMoveClick: (idx: number) => void;
     export let onFlush: (bjid: string) => void;
-    export let register;
+    export let register: (
+        idx: number,
+        component: (info: LiveInfoResponse) => Promise<void>,
+    ) => void;
 
     export let uuid: string;
     export let guid: string;
 
+    export let lowLatency: boolean = false;
+
+    $: {
+        lowLatency
+            ? (hls.config.liveSyncDuration = 2)
+            : (hls.config.liveSyncDuration = 12);
+    }
+
+    let liveFetcher: LiveFetcher;
     let liveLogger: LiveLogger;
-    let bjid: string;
+    let chatSocket: ChatSocket;
+
     let userCount: number = 0;
 
+    function set_lowLatency() {
+        hls.config.liveSyncDuration = 2;
+    }
+
     onMount(() => {
-        if (register) {
-            register(idx, set_video);
-        }
+        register(idx, set_stream);
 
         const preventContextMenu = (event) => {
             event.preventDefault();
@@ -58,28 +93,28 @@
         document.addEventListener("contextmenu", preventContextMenu);
         hideAllLayer;
 
+        liveFetcher = new LiveFetcher();
         liveLogger = new LiveLogger(uuid, guid, onUserUpdate, onCrash);
+        chatSocket = new ChatSocket();
+        liveInfo = undefined;
+
         return () => {
             document.removeEventListener("contextmenu", preventContextMenu);
         };
     });
 
     onDestroy(() => {
+        flush();
         hls.destroy();
-        liveLogger.close();
     });
 
     function onCrash() {
-        showError("서버와의 동기화가 끊어져 스트림을 종료했습니다.");
         flush();
+        showError("서버와의 동기화가 끊어져 스트림을 종료했습니다.");
     }
 
     function onUserUpdate(userCnt: number) {
         userCount = userCnt;
-    }
-
-    function showPopup(e: MouseEvent) {
-        onPopUp(idx);
     }
 
     function toggleSettings() {
@@ -122,9 +157,12 @@
         layer.style.display = "flex";
     }
 
-    export async function set_video(proxy_url: string, bid: string) {
-        bjid = bid;
-        // hls.lowLatencyMode = true;
+    export async function set_stream(
+        info: LiveInfoResponse,
+        password?: string,
+    ) {
+        let proxy_url = await liveFetcher.get_master_stream(info, password);
+
         hls.loadSource(proxy_url);
         hls.attachMedia(videoElement);
         videoElement.load();
@@ -140,7 +178,9 @@
                 return [level.height + "p", level];
             });
 
-            liveLogger.initializeWebSocket(bjid);
+            liveLogger.initializeWebSocket(info);
+            chatSocket.initializeWebSocket(info, document.cookie);
+            info = info;
         });
 
         hls.on(Hls.Events.FRAG_LOADED, (event, data) => {
@@ -148,7 +188,7 @@
         });
 
         hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
-            console.log("level switched", data.level);
+            console.log("level switched: ", data.level);
         });
 
         hls.on(Hls.Events.ERROR, (event, data) => {
@@ -176,9 +216,15 @@
                 }
             } else {
                 switch (data.type) {
+                    case Hls.ErrorTypes.NETWORK_ERROR:
+                        if (
+                            data.details == Hls.ErrorDetails.LEVEL_EMPTY_ERROR
+                        ) {
+                            break;
+                        }
                     case Hls.ErrorTypes.MEDIA_ERROR:
                         errorCount++;
-                        if (errorCount > 5) {
+                        if (errorCount > 20) {
                             showError(
                                 "스트림을 불러오는 중 오류가 발생했습니다. 다시 시도해 주세요.",
                             );
@@ -191,6 +237,10 @@
         });
     }
 
+    // export function onCookieChange() {
+
+    // }
+
     function showError(msg: string) {
         errorMsg = msg;
         clearTimeout(timeoutID);
@@ -198,17 +248,23 @@
     }
 
     function flush() {
+        clearTimeout(timeoutID);
+
         errorCount = 0;
         if (settingShown) {
             toggleSettings();
         }
+
         hls.detachMedia();
         hls.stopLoad();
-        showLayer(input_layer);
-        clearTimeout(timeoutID);
 
-        onFlush(bjid);
         liveLogger.close();
+        chatSocket.close();
+        if (liveInfo) {
+            onFlush(liveInfo.BJID);
+        }
+
+        showLayer(input_layer);
         console.warn("flushed!");
     }
 
@@ -271,7 +327,7 @@
                 }}>입장</button
             >
         </div> -->
-        <button on:click={showPopup}>방송 추가하기</button>
+        <button on:click={() => showPopup(idx)}>방송 추가하기</button>
     </div>
 
     <div class="error layer" style="display:none" bind:this={error_layer}>
@@ -300,6 +356,7 @@
             bind:paused
             bind:videoHeight
             autoplay
+            controls
         >
             <track kind="captions" />
         </video>
@@ -367,8 +424,12 @@
         border: 0;
         cursor: pointer;
         font-family: "Pretendard";
-        font-size: calc(0.8rem + 0.4vw + 0.4vh);
+        font-size: calc(0.8rem + 40%);
         font-weight: 600;
+    }
+
+    .input > button:hover {
+        background-color: rgba(255, 255, 255, 0.7);
     }
 
     .error {

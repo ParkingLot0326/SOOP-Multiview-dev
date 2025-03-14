@@ -1,19 +1,21 @@
 <script lang="ts">
     import Carousel from "./Carousel.svelte";
-    import { LiveRequest } from "./live";
     import { carouselItemInfo } from "./carouselItemInfo";
+    import type { LiveInfoResponse } from "./LiveInfoResponse";
+    import { proxy_url } from "../utils/util";
 
     let overlay: HTMLElement;
     let popup: HTMLElement;
     let carousel: Carousel;
     let inputWrap: HTMLElement;
     let buttonWrap: HTMLElement;
+
     let ImgSelectionID: string | undefined;
+
     let urlInputVal: string = "";
     let errorURL: string = "";
     let idInputVal: string = "";
     let errorID: string = "";
-    let live: LiveRequest = new LiveRequest();
 
     let overlayShown = false;
 
@@ -23,11 +25,9 @@
     export let isPopupOpen: boolean = false;
 
     export let registeredStreams: string[];
+    export let onSetStream: (idx: number, info: LiveInfoResponse) => void;
 
-    let items: carouselItemInfo[] = [
-        // new itemInfo("1", "테스트1"),
-        // new itemInfo("1", "테스트1"),
-    ];
+    let items: carouselItemInfo[] = [];
     let selectedItem: carouselItemInfo;
     $: {
         selectedItem = items.filter((val) => {
@@ -77,39 +77,62 @@
         ImgSelectionID = undefined;
     }
 
-    function hideInputs() {
-        inputWrap.style.display = "none";
-        buttonWrap.style.display = "flex";
+    function setup(input: string): string {
+        if (
+            input.includes("play.sooplive.co.kr") ||
+            input.includes("live.sooplive.co.kr")
+        ) {
+            return input
+                .replaceAll("https://", "http://")
+                .replaceAll("http://", "")
+                .split("/")[1];
+        } else if (input.split(" ").length == 1) {
+            return input;
+        } else {
+            throw new Error("Invalid URL or BJID");
+        }
     }
 
-    function showInputs() {
-        inputWrap.style.display = "flex";
-        buttonWrap.style.display = "none";
+    async function fetchInfo(bid: string) {
+        const live_info_res = await fetch(proxy_url({ url: LIVE_CHECK }), {
+            method: "POST",
+            headers: {
+                Origin: "https://live.sooplive.co.kr",
+                Referer: "https://live.sooplive.co.kr/",
+                "User-Agent":
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            },
+            body: JSON.stringify({ bid: bid }),
+        });
+
+        return live_info_res
+            .json()
+            .then((data) => {
+                let live_info = data.get("CHANNEL") as LiveInfoResponse;
+                live_info.BJID = bid;
+                return live_info;
+            })
+            .catch((err) => {
+                throw new Error(`Error from Fetching: ${err}`);
+            });
     }
 
-    export let onSetStream: (idx: number, url: string, id: string) => void;
-
-    async function register(info: string, regMode: number) {
-        let bid = live.setup(info);
+    async function register(dat: string, regMode: number) {
+        let bid = setup(dat);
 
         if (registeredStreams.includes(bid)) {
             showError(regMode + 3);
-            live.purge();
             return;
         }
-
         try {
-            let liveUrl = await live.get_master_stream();
-            onSetStream(popupIdx, liveUrl, bid);
+            onSetStream(popupIdx, await fetchInfo(bid));
         } catch (e) {
             showError(regMode);
-            live.purge();
             return;
         }
         hidePopup();
         urlInputVal = "";
         idInputVal = "";
-        live.purge();
     }
 
     function showError(regMode: number) {

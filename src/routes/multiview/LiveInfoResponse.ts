@@ -1,7 +1,7 @@
 export interface LiveInfoResponse {
     RESULT: number;
+    BJID: string;
     VIEWPRESET?: ViewPreset[];
-    BJID?: string;
     BNO?: number;
     BJNICK?: string;
     CHATNO?: number;
