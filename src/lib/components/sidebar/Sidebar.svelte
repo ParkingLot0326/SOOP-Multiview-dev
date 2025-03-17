@@ -2,6 +2,8 @@
     import { window } from "@tauri-apps/api";
     import { PhysicalSize } from "@tauri-apps/api/dpi";
     import "@fortawesome/fontawesome-free/css/all.min.css";
+    import Chat from "./Chat.svelte";
+    import { ChatSocket } from "$lib";
 
     const sidebarWidth = 280;
     const viewportMinHeight = 580;
@@ -20,6 +22,7 @@
         doShrinkDelay = $bindable(),
         doDelayChat = $bindable(),
         mainVol = $bindable(),
+        mainChatSocket = $bindable(),
         liveWrap,
     }: {
         doFixMainVol: boolean;
@@ -27,6 +30,7 @@
         doShrinkDelay: boolean;
         doDelayChat: boolean;
         mainVol: number;
+        mainChatSocket: ChatSocket;
         liveWrap: HTMLElement;
     } = $props();
 
@@ -176,11 +180,15 @@
         <div class="label" class:expanded={isExpanded}>채팅</div>
     </button>
 
-    <div
-        class="content"
-        class:expanded={isExpanded}
-        class:selected={chatOpen}
-    ></div>
+    <div class="content" class:expanded={isExpanded} class:selected={chatOpen}>
+        <Chat
+            onMessage={() => {}}
+            onEvent={() => {}}
+            disconnect={() => {}}
+            handleSendMessage={() => {}}
+            bind:socket={mainChatSocket}
+        />
+    </div>
 </div>
 
 <style>

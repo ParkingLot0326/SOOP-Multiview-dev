@@ -1,22 +1,20 @@
 <script lang="ts">
     import { onMount } from "svelte";
-    import { ChatSocket } from "./chat";
-    import EventBubble from "./EventBubble.svelte";
-    import ChatBubble from "./ChatBubble.svelte";
+    import { ChatSocket, eventType, type eventData } from "$lib";
 
-    import { eventType, type eventData } from "$lib";
+    import { ChatBubble, EventBubble } from "./bubble";
 
     let {
         onMessage,
         onEvent,
         handleSendMessage,
         disconnect,
-        socket,
+        socket = $bindable(),
     }: {
         onMessage: () => void;
         onEvent: () => void;
-        handleSendMessage: () => {};
-        disconnect: () => {};
+        handleSendMessage: () => void;
+        disconnect: () => void;
         socket: ChatSocket;
     } = $props();
 

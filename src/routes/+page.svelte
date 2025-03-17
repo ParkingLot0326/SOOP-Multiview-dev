@@ -1,5 +1,5 @@
 <script lang="ts">
-  import FlexCanvas from "./multiview/FlexCanvas.svelte";
+  import FlexCanvas from "./FlexCanvas.svelte";
 </script>
 
 <!-- <div style="display: flex; flex-direction: column; height: 100%;">

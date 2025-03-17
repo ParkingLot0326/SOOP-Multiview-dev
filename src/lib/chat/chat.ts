@@ -1,7 +1,6 @@
-import { eventType, eventData } from '../models/chatData';
-import type { freezeFlag, statusFlag, userFlag, chatRules } from '../models/chatData';
-import type { LiveInfoResponse } from '../models/liveInfoResponse';
-import { getCookie } from '../utils/util';
+
+import { eventData, eventType } from '$lib';
+import type { chatRules, freezeFlag, LiveInfoResponse, statusFlag, userFlag } from '$lib';
 
 const BK: string = String.fromCharCode(9)
 const FF: string = String.fromCharCode(12)
