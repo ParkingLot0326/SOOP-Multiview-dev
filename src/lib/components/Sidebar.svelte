@@ -2,27 +2,33 @@
     import { window } from "@tauri-apps/api";
     import { PhysicalSize } from "@tauri-apps/api/dpi";
     import "@fortawesome/fontawesome-free/css/all.min.css";
-    import FlexCanvas from "./FlexCanvas.svelte";
-    import { onMount } from "svelte";
 
     const sidebarWidth = 280;
-    const viewportMinHeight = 610;
+    const viewportMinHeight = 580;
+    const viewport = window.getCurrentWindow();
 
-    let settingOpen = false;
-    let chatOpen = false;
+    let settingOpen = $state(false);
+    let chatOpen = $state(false);
 
-    let expander;
-    let isExpanded = false;
-    let viewport = window.getCurrentWindow();
+    let expander: HTMLElement | undefined = $state(undefined);
+    let isExpanded = $state(false);
     let beforeWidth: number | null;
 
-    export let doFixMainVol: boolean;
-    export let doFixQuality: boolean;
-    export let doShrinkDelay: boolean;
-
-    export let MainVol: number;
-
-    export let liveWrap: HTMLElement;
+    let {
+        doFixMainVol = $bindable(),
+        doFixQuality = $bindable(),
+        doShrinkDelay = $bindable(),
+        doDelayChat = $bindable(),
+        mainVol = $bindable(),
+        liveWrap,
+    }: {
+        doFixMainVol: boolean;
+        doFixQuality: boolean;
+        doShrinkDelay: boolean;
+        doDelayChat: boolean;
+        mainVol: number;
+        liveWrap: HTMLElement;
+    } = $props();
 
     async function expand() {
         let size = await viewport.innerSize();
@@ -45,7 +51,6 @@
     async function collapse() {
         const height = await viewport.innerSize().then((size) => size.height);
         const isMaximized = await viewport.isMaximized();
-        console.log(isMaximized);
 
         if (beforeWidth && !isMaximized) {
             viewport.setMinSize(new PhysicalSize(1008, viewportMinHeight));
@@ -80,7 +85,7 @@
         class="expander"
         class:expanded={isExpanded}
         bind:this={expander}
-        on:click={isExpanded ? collapse : expand}
+        onclick={isExpanded ? collapse : expand}
         aria-label="expander"
         ><i class="fa-solid fa-chevron-right"></i>
     </button>
@@ -89,7 +94,7 @@
     <button
         class="setting menu-wrap"
         class:expanded={isExpanded}
-        on:click={() => {
+        onclick={() => {
             if (!isExpanded) {
                 expand();
             }
@@ -119,7 +124,7 @@
                 <input
                     disabled={!doFixMainVol}
                     class="slider"
-                    bind:value={MainVol}
+                    bind:value={mainVol}
                     type="range"
                     name="volume"
                     max="100"
@@ -159,7 +164,7 @@
     <button
         class="chat menu-wrap"
         class:expanded={isExpanded}
-        on:click={() => {
+        onclick={() => {
             if (!isExpanded) {
                 expand();
             }
@@ -171,19 +176,11 @@
         <div class="label" class:expanded={isExpanded}>채팅</div>
     </button>
 
-    <div class="content" class:expanded={isExpanded} class:selected={chatOpen}>
-        <div class="chat-display-wrap">
-            <div class="chat-display"></div>
-        </div>
-        <div class="chat-input-wrap">
-            <div class="entry-wrap">
-                <div class="entry" contenteditable></div>
-            </div>
-            <button class="submit" aria-label="submit"
-                ><i class="fa-solid fa-paper-plane"></i></button
-            >
-        </div>
-    </div>
+    <div
+        class="content"
+        class:expanded={isExpanded}
+        class:selected={chatOpen}
+    ></div>
 </div>
 
 <style>
@@ -361,95 +358,5 @@
     .slider {
         width: 100%;
         height: 24px;
-    }
-
-    .chat-display-wrap {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100%;
-    }
-
-    .chat-display {
-        flex: 0 1 auto;
-        overflow-y: scroll;
-        padding-bottom: 4px;
-        border: 1px solid black;
-        width: 100%;
-        height: 100%;
-    }
-    .chat-display::-webkit-scrollbar {
-        display: none;
-    }
-
-    .chat-input-wrap {
-        display: flex;
-        align-items: center;
-        position: relative;
-        background: #f6f6f9;
-        width: 100%;
-        height: 50px;
-        margin-top: 6px;
-        padding: 0px 12px;
-        border-radius: 12px;
-        box-sizing: border-box;
-    }
-
-    .entry-wrap {
-        flex: 0 1 auto;
-        position: relative;
-        width: 100%;
-        height: 100%;
-    }
-
-    .entry {
-        position: absolute;
-        top: 50%;
-        left: 0;
-        overflow: hidden scroll;
-        background: rgba(0, 0, 0, 0);
-        width: 100%;
-        max-height: 100%;
-        padding: 5px 0;
-        box-sizing: border-box;
-        font-size: 14px;
-        line-height: 1.4;
-        color: #17191c;
-        border: none;
-        word-wrap: break-word;
-        cursor: text;
-        transform: translate(0, -50%);
-        z-index: 1;
-        scrollbar-width: none;
-    }
-
-    .entry:focus {
-        outline: none;
-    }
-
-    .submit {
-        flex: 0 0 auto;
-        width: 32px;
-        height: 32px;
-        margin-left: 8px;
-        border-radius: 8px;
-        background-color: transparent;
-        border: none;
-    }
-
-    .submit:focus {
-        outline: none;
-    }
-
-    .submit:hover {
-        background-color: rgba(145, 150, 161, 0.1);
-    }
-
-    .submit > i {
-        font-size: 16px;
-        color: gray;
-        transform: rotate(-0deg);
     }
 </style>

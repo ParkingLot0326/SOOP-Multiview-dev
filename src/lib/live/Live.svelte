@@ -1,111 +1,117 @@
 <script lang="ts">
     import { onMount, onDestroy } from "svelte";
-    import Hls from "hls.js";
-    import { Level } from "hls.js";
-    import { LiveLogger } from "./liveLogger";
-    import type { LiveInfoResponse } from "./LiveInfoResponse";
-    import { ChatSocket } from "./chat";
-    import { LiveFetcher } from "./live";
+    // import Hls from "hls.js";
+    import Hls, { Level } from "hls.js";
+    import { LiveFetcher, LiveLogger, ChatSocket } from "$lib";
+    import type { LiveInfoResponse } from "$lib";
 
-    let input_layer: HTMLElement;
-    let setting_layer: HTMLElement;
-    let player_layer: HTMLElement;
-    let error_layer: HTMLElement;
+    // DOM 요소 바인딩
+    let input_layer = $state<HTMLElement | null>(null);
+    let setting_layer = $state<HTMLElement | null>(null);
+    let player_layer = $state<HTMLElement | null>(null);
+    let error_layer = $state<HTMLElement | null>(null);
 
-    let videoElement: HTMLVideoElement;
-    let time: number;
-    let duration: number;
-    let paused: boolean;
-    let videoHeight: number;
+    let videoElement = $state<HTMLVideoElement | null>(null);
+    let time = $state<number>(0);
+    let duration = $state<number>(0);
+    let paused = $state<boolean>(false);
+    let videoHeight = $state<number>(0);
 
-    let qualities: [string, Level][];
-    let selectedQuality: Level | undefined;
+    let qualities = $state<[string, Level][]>([]);
+    let selectedQuality = $state<Level | undefined>(undefined);
 
-    let settingShown: boolean = false;
-    let setting_content: HTMLElement;
+    let settingShown = $state<boolean>(false);
+    let setting_content = $state<HTMLElement | null>(null);
 
-    let hls = new Hls({
-        startLevel: -1,
-        autoStartLoad: true,
-        levelLoadingRetryDelay: 100,
-        levelLoadingMaxRetry: 20,
-        levelLoadingMaxRetryTimeout: 20000,
-        lowLatencyMode: false,
-        liveBackBufferLength: 10,
-        initialLiveManifestSize: 1,
-        ignoreDevicePixelRatio: true,
-        liveSyncDuration: 2,
-        liveMaxLatencyDuration: 12,
-        maxStarvationDelay: 4,
-        maxAudioFramesDrift: 0,
-        nudgeMaxRetry: 20,
-    });
+    let hls = $state(
+        new Hls({
+            autoStartLoad: true,
+            levelLoadingRetryDelay: 100,
+            levelLoadingMaxRetry: 20,
+            levelLoadingMaxRetryTimeout: 20000,
+            lowLatencyMode: false,
+            liveBackBufferLength: 10,
+            initialLiveManifestSize: 1,
+            ignoreDevicePixelRatio: true,
+            liveSyncDuration: 2,
+            liveMaxLatencyDuration: 4,
+            maxStarvationDelay: 10,
+            maxAudioFramesDrift: 0,
+            nudgeMaxRetry: 20,
+        }),
+    );
 
-    let volume_percent: number;
-    let volume: number;
-    $: {
-        volume = volume_percent / 100;
-    }
+    let volume_percent = $state<number>(50);
 
-    let timeoutID: NodeJS.Timeout;
-    let errorMsg: string;
-    let errorCount = 0;
+    let timeoutID = $state<NodeJS.Timeout | undefined>(undefined);
+    let errorMsg = $state<string>("");
+    let errorCount = $state<number>(0);
 
-    let liveInfo: LiveInfoResponse | undefined;
+    let liveInfo = $state<LiveInfoResponse | undefined>(undefined);
 
-    export let idx: number;
-    export let showPopup: (idx: number) => void;
-    export let onMoveClick: (idx: number) => void;
-    export let onFlush: (bjid: string) => void;
-    export let register: (
-        idx: number,
-        component: (info: LiveInfoResponse) => Promise<void>,
-    ) => void;
+    // props 정의
+    let {
+        idx,
+        showPopup,
+        onMoveClick,
+        onFlush,
+        register,
+        uuid,
+        guid,
+    }: {
+        idx: number;
+        showPopup: (idx: number) => void;
+        onMoveClick: (idx: number) => void;
+        onFlush: (bjid: string) => void;
+        register: (
+            idx: number,
+            component: (info: LiveInfoResponse) => Promise<void>,
+        ) => void;
+        uuid: string;
+        guid: string;
+    } = $props();
 
-    export let uuid: string;
-    export let guid: string;
+    let liveFetcher = $state<LiveFetcher | null>(null);
+    let liveLogger = $state<LiveLogger | null>(null);
+    let chatSocket = $state<ChatSocket | null>(null);
 
-    export let lowLatency: boolean = false;
+    let userCount = $state<number>(0);
 
-    $: {
-        lowLatency
-            ? (hls.config.liveSyncDuration = 2)
-            : (hls.config.liveSyncDuration = 12);
-    }
-
-    let liveFetcher: LiveFetcher;
-    let liveLogger: LiveLogger;
-    let chatSocket: ChatSocket;
-
-    let userCount: number = 0;
-
-    function set_lowLatency() {
-        hls.config.liveSyncDuration = 2;
-    }
-
+    // 컴포넌트 초기화
     onMount(() => {
         register(idx, set_stream);
 
-        const preventContextMenu = (event) => {
+        const preventContextMenu = (event: Event) => {
             event.preventDefault();
         };
 
         document.addEventListener("contextmenu", preventContextMenu);
-        hideAllLayer;
+        showLayer(input_layer!);
 
         liveFetcher = new LiveFetcher();
         liveLogger = new LiveLogger(uuid, guid, onUserUpdate, onCrash);
-        chatSocket = new ChatSocket();
+        chatSocket = new ChatSocket(
+            () => {},
+            () => {},
+            undefined,
+            undefined,
+            {
+                showBalloons: true,
+                showFollows: true,
+                showKicks: true,
+                showMission: true,
+                showMissionSettle: true,
+                showSubscriptions: true,
+            },
+        );
         liveInfo = undefined;
 
+        // cleanup function
         return () => {
             document.removeEventListener("contextmenu", preventContextMenu);
+            flush();
+            hls.destroy();
         };
-    });
-
-    onDestroy(() => {
-        flush();
-        hls.destroy();
     });
 
     function onCrash() {
@@ -120,12 +126,16 @@
     function toggleSettings() {
         if (settingShown) {
             settingShown = false;
-            setting_content.style.display = "none";
-            setting_layer.style.opacity = "0";
+            if (setting_content) {
+                setting_content.style.display = "none";
+                setting_layer!.style.opacity = "0";
+            }
         } else {
             settingShown = true;
-            setting_content.style.display = "flex";
-            setting_layer.style.opacity = "1";
+            if (setting_content) {
+                setting_content.style.display = "flex";
+                setting_layer!.style.opacity = "1";
+            }
         }
         return false;
     }
@@ -144,7 +154,7 @@
     function hideAllLayer() {
         let layers = [input_layer, error_layer, player_layer];
         layers.forEach((layer) => {
-            layer.style.display = "none";
+            if (layer) layer.style.display = "none";
         });
     }
 
@@ -157,16 +167,13 @@
         layer.style.display = "flex";
     }
 
-    export async function set_stream(
-        info: LiveInfoResponse,
-        password?: string,
-    ) {
-        let proxy_url = await liveFetcher.get_master_stream(info, password);
+    async function set_stream(info: LiveInfoResponse, password?: string) {
+        let proxy_url = await liveFetcher!.get_master_stream(info, password);
 
         hls.loadSource(proxy_url);
-        hls.attachMedia(videoElement);
-        videoElement.load();
-        showLayer(player_layer);
+        hls.attachMedia(videoElement!);
+        videoElement!.load();
+        showLayer(player_layer!);
 
         hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
             console.log(
@@ -178,9 +185,9 @@
                 return [level.height + "p", level];
             });
 
-            liveLogger.initializeWebSocket(info);
-            chatSocket.initializeWebSocket(info, document.cookie);
-            info = info;
+            liveLogger!.initializeWebSocket(info);
+            chatSocket!.initializeWebSocket(info, document.cookie);
+            liveInfo = info;
         });
 
         hls.on(Hls.Events.FRAG_LOADED, (event, data) => {
@@ -237,39 +244,39 @@
         });
     }
 
-    // export function onCookieChange() {
-
-    // }
-
     function showError(msg: string) {
         errorMsg = msg;
-        clearTimeout(timeoutID);
-        showLayer(error_layer);
+        if (timeoutID) clearTimeout(timeoutID);
+        showLayer(error_layer!);
     }
 
     function flush() {
-        clearTimeout(timeoutID);
+        if (timeoutID) clearTimeout(timeoutID);
 
         errorCount = 0;
         if (settingShown) {
             toggleSettings();
         }
 
-        hls.detachMedia();
-        hls.stopLoad();
-
-        liveLogger.close();
-        chatSocket.close();
-        if (liveInfo) {
-            onFlush(liveInfo.BJID);
+        if (videoElement) {
+            hls.detachMedia();
+            hls.stopLoad();
         }
 
-        showLayer(input_layer);
+        if (liveLogger) liveLogger.close();
+        if (chatSocket) chatSocket.close();
+
+        if (liveInfo) {
+            onFlush(liveInfo.BJID);
+            liveInfo = undefined;
+        }
+
+        if (input_layer) showLayer(input_layer);
         console.warn("flushed!");
     }
 
     function streamTimeout() {
-        clearTimeout(timeoutID);
+        if (timeoutID) clearTimeout(timeoutID);
         timeoutID = setTimeout(() => {
             console.error("Stream Timeout..Flushing Stream..");
             flush();
@@ -283,7 +290,7 @@
         class="setting layer"
         style="opacity:0;"
         bind:this={setting_layer}
-        on:contextmenu={toggleSettings}
+        oncontextmenu={toggleSettings}
     >
         <div
             class="setting-content"
@@ -305,7 +312,7 @@
                     name="quality"
                     class="quality-select"
                     bind:value={selectedQuality}
-                    on:change={onQualityChange}
+                    onchange={onQualityChange}
                 >
                     <option value={undefined}>자동</option>
                     {#each qualities as quality}
@@ -314,27 +321,19 @@
                 </select>
             </div>
 
-            <button on:click={flush}>종료</button>
+            <button onclick={flush}>종료</button>
         </div>
     </div>
 
     <div class="input layer" style="display:flex;" bind:this={input_layer}>
-        <!-- <div>
-            <input type="text" placeholder="방송 URL" bind:value={player_url} />
-            <button
-                on:click={() => {
-                    init_w_url(player_url);
-                }}>입장</button
-            >
-        </div> -->
-        <button on:click={() => showPopup(idx)}>방송 추가하기</button>
+        <button onclick={() => showPopup(idx)}>방송 추가하기</button>
     </div>
 
     <div class="error layer" style="display:none" bind:this={error_layer}>
         <div class="error-label">
             {errorMsg}
         </div>
-        <button class="error-button" on:click={flush}>돌아가기</button>
+        <button class="error-button" onclick={flush}>돌아가기</button>
     </div>
 
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -343,20 +342,20 @@
         class="player layer"
         style="display:none"
         bind:this={player_layer}
-        on:click={() => {
+        onclick={() => {
             onMoveClick(idx);
         }}
-        on:contextmenu={toggleSettings}
+        oncontextmenu={toggleSettings}
     >
         <video
             bind:this={videoElement}
             bind:currentTime={time}
             bind:duration
-            bind:volume
+            volume={volume_percent / 100}
             bind:paused
             bind:videoHeight
             autoplay
-            controls
+            preload="auto"
         >
             <track kind="captions" />
         </video>

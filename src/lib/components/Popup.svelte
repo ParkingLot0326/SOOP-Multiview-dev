@@ -1,8 +1,13 @@
 <script lang="ts">
-    import Carousel from "./Carousel.svelte";
-    import { carouselItemInfo } from "./carouselItemInfo";
-    import type { LiveInfoResponse } from "./LiveInfoResponse";
-    import { proxy_url } from "../utils/util";
+    import {
+        carouselItemInfo,
+        proxy_url,
+        Carousel,
+        type LiveInfoResponse,
+    } from "$lib";
+
+    const LIVE_CHECK =
+        "https://live.sooplive.co.kr/afreeca/player_live_api.php";
 
     let overlay: HTMLElement;
     let popup: HTMLElement;
@@ -62,7 +67,6 @@
         }
 
         if (popup.style.display == "flex") {
-            console.log("hide");
             hidePopup();
         }
     }
@@ -93,7 +97,7 @@
         }
     }
 
-    async function fetchInfo(bid: string) {
+    async function fetchInfo(bjid: string) {
         const live_info_res = await fetch(proxy_url({ url: LIVE_CHECK }), {
             method: "POST",
             headers: {
@@ -102,14 +106,16 @@
                 "User-Agent":
                     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             },
-            body: JSON.stringify({ bid: bid }),
+            body: JSON.stringify({
+                bid: bjid,
+            }),
         });
 
         return live_info_res
             .json()
             .then((data) => {
-                let live_info = data.get("CHANNEL") as LiveInfoResponse;
-                live_info.BJID = bid;
+                let live_info = data["CHANNEL"] as LiveInfoResponse;
+                live_info.BJID = bjid;
                 return live_info;
             })
             .catch((err) => {
@@ -127,6 +133,7 @@
         try {
             onSetStream(popupIdx, await fetchInfo(bid));
         } catch (e) {
+            console.error(e);
             showError(regMode);
             return;
         }
@@ -136,7 +143,6 @@
     }
 
     function showError(regMode: number) {
-        console.log("error");
         clearError();
         switch (regMode) {
             case 0:
@@ -154,7 +160,6 @@
             default:
                 break;
         }
-        console.log(regMode);
     }
 
     function clearError() {
@@ -170,11 +175,7 @@
 <div class:overlay class:overlay-blur={overlayShown} bind:this={overlay}></div>
 <div class="popup" bind:this={popup} style="display: none">
     <div style=" position:relative; width:100%">
-        <Carousel
-            bind:selectedID={ImgSelectionID}
-            bind:this={carousel}
-            bind:items
-        />
+        <Carousel bind:selectedID={ImgSelectionID} bind:this={carousel} />
     </div>
 
     <div
@@ -251,6 +252,7 @@
     }
 
     .overlay-blur {
+        pointer-events: all;
         backdrop-filter: blur(4px);
         background-color: rgba(255, 255, 255, 0.15);
     }

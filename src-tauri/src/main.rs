@@ -22,7 +22,6 @@ use std::{
 };
 
 use bytes::Bytes;
-use percent_encoding::percent_decode_str;
 
 fn initialize() -> Result<(), Box<dyn std::error::Error>> {
     let exe_path: PathBuf = std::env::current_exe()?;
@@ -164,8 +163,9 @@ fn parse_proxy_request(uri: &str) -> Result<HashMap<String, String>, String> {
     Ok(params)
 }
 
-fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
+fn custom_protocol(mut request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
     let method: HttpMethod = request.method().to_owned();
+    let body = request.body().to_owned();
     // 요청 URI 파싱 및 파라미터 추출
     let params: HashMap<String, String> = match parse_proxy_request(&request.uri().to_string()) {
         Ok(params) => params,
@@ -177,6 +177,7 @@ fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
                 .unwrap();
         }
     };
+
     // 필수 파라미터 확인
     let url = match params.get("url") {
         Some(url) => url,
@@ -191,26 +192,27 @@ fn custom_protocol(request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
         }
     };
 
-    let headers = request.headers().to_owned();
-
-    let query = match params.get("query") {
-        Some(query) => {
-            let decoded_query = percent_decode_str(query).decode_utf8().unwrap();
-            let query_map: Map<String, Value> =
-                serde_json::from_str(&decoded_query).unwrap_or(Map::new());
-            query_map
-        }
-        None => Map::new(),
-    };
+    let mut headers = request.headers_mut().to_owned();
+    headers.remove("Origin");
+    headers.append(
+        "Origin",
+        HeaderValue::from_static("https://play.sooplive.co.kr"),
+    );
+    headers.remove("Referer");
+    headers.append(
+        "Referer",
+        HeaderValue::from_static("https://play.sooplive.co.kr/"),
+    );
 
     // HTTP 요청 수행
     let client: BlockingClient = create_blocking_client();
 
     let response: TauriResponse<Vec<u8>> = match request.uri().path() {
-        "/stream" => build_stream_response(client, url, headers, query),
-        "/stream/segment" => build_response(client, url, method, headers, query),
-        "/auth" => build_response(client, url, method, headers, query),
-        _ => build_response(client, url, method, headers, query),
+        "/stream" => build_stream_response(client, url, headers),
+        "/stream/segment" => build_response(client, url, method, headers, Some(body)),
+        "/auth" => build_response(client, url, method, headers, Some(body)),
+        "/fetch" => build_response(client, url, method, headers, Some(body)),
+        _ => build_response(client, url, method, headers, Some(body)),
     };
 
     return response;
@@ -280,11 +282,18 @@ fn build_response(
     url: &str,
     method: HttpMethod,
     headers: HeaderMap,
-    query: Map<String, Value>,
+    body: Option<Vec<u8>>,
 ) -> TauriResponse<Vec<u8>> {
+    let map: Map<String, Value>;
+    if let Some(vec) = body {
+        map = serde_json::from_slice(&vec).unwrap_or(Map::new());
+    } else {
+        map = Map::new();
+    }
+
     let response: Result<BlockingResponse, Error> = match method {
-        HttpMethod::GET => client.get(url).headers(headers).query(&query).send(),
-        HttpMethod::POST => client.post(url).headers(headers).form(&query).send(),
+        HttpMethod::GET => client.get(url).headers(headers).send(),
+        HttpMethod::POST => client.post(url).headers(headers).form(&map).send(),
         _ => {
             return build_error_response(400); // 400 Bad Request for invalid method
         }
@@ -297,10 +306,9 @@ fn build_stream_response(
     client: BlockingClient,
     url: &str,
     headers: HeaderMap,
-    query: Map<String, Value>,
 ) -> TauriResponse<Vec<u8>> {
     let original_response: Result<BlockingResponse, Error> =
-        client.get(url).headers(headers).query(&query).send();
+        client.get(url).headers(headers).send();
     match original_response {
         Ok(resp) => {
             let status = resp.status();
@@ -350,10 +358,7 @@ fn build_stream_response(
                     let tmp_json = serde_json::to_string(&query_val).unwrap();
                     let query_string = encode(&tmp_json);
 
-                    let new_uri = format!(
-                        "?url={}/{}&query={}&method=GET",
-                        master_uri, path, query_string,
-                    );
+                    let new_uri = format!("?url={}/{}?{}", master_uri, path, query_string,);
                     let mut new_variant = variant.clone();
                     new_variant.uri = new_uri;
                     new_playlist.variants.push(new_variant);
@@ -380,7 +385,11 @@ fn build_stream_response(
 
                     let mut new_segment: MediaSegment = segment.clone();
 
-                    let new_uri = format!("segment?url={}/{}&method=GET", url, segment.uri);
+                    let new_uri = format!(
+                        "segment?url={}/{}",
+                        url.split("?").collect::<Vec<&str>>()[0],
+                        segment.uri
+                    );
                     new_segment.uri = new_uri;
                     new_playlist.segments.push(new_segment);
                 }
@@ -424,12 +433,12 @@ fn main() {
     let client = create_client();
     initialize().expect("초기화에 실패했습니다.");
     tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .register_uri_scheme_protocol("proxy", move |_app_handle, request| {
             custom_protocol(request)
         })
         .manage(client)
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             println!("다른 인스턴스가 시작되었습니다: {:?}, {:?}", argv, cwd);
 

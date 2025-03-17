@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "멀티뷰",
-        "minWidth": 1032,
-        "minHeight": 610,
+        "minWidth": 1048,
+        "minHeight": 570,
         "decorations": true
       }
     ],

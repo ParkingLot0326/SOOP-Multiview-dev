@@ -1,4 +1,4 @@
-import type { LiveInfoResponse } from './LiveInfoResponse';
+import type { LiveInfoResponse } from '../models/liveInfoResponse';
 
 const DC1 = "\u0011"
 const DC2 = "\u0012"
@@ -119,8 +119,6 @@ interface UserCountPacketData {
     uiBroadNo: number, uiJoinChUser: number, uiMbUser: number, uiTotChUser: number
 }
 
-
-
 export class LiveLogger {
 
     private uuid: string;
@@ -160,7 +158,6 @@ export class LiveLogger {
         ws.onopen = () => {
             console.log("Connected to Bridge")
             let packet = this.build_GW_packet(info)
-            console.log("Sending Packet: ", JSON.stringify(packet))
             ws.send(JSON.stringify(packet))
         }
 
@@ -207,8 +204,6 @@ export class LiveLogger {
                     if (this.limiterTimeout) { clearTimeout(this.limiterTimeout) }
                     break
                 default: {
-                    console.log("Unrecognized Packet: ", packet)
-                    console.log("Packet SVCType: ", packet.SVC)
                     break
                 }
 

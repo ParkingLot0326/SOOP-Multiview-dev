@@ -1,14 +1,8 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
-    import Live from "./Live.svelte";
-    import Carousel from "./Carousel.svelte";
-    import Popup from "./Popup.svelte";
-    import ChatBubble from "../chat/ChatBubble.svelte";
-    import type { ChatData } from "../chat/chatData";
-    import Sidebar from "./Sidebar.svelte";
-
+    import type { LiveInfoResponse } from "$lib";
+    import { Popup, Live, Sidebar } from "$lib";
     import { v4 as uuidv4 } from "uuid";
-    import type { LiveInfoResponse } from "./LiveInfoResponse";
 
     const MINWIDTH = 640;
     const THRESHOLDWIDTH = 880;
@@ -16,8 +10,6 @@
 
     const uuid = uuidv4().replaceAll("-", "");
     const guid = uuidv4().replaceAll("-", "").toUpperCase();
-
-    console.log(guid);
 
     let canvas: HTMLElement;
     let popup: Popup;
@@ -62,15 +54,14 @@
 
     function onSetStream(idx: number, info: LiveInfoResponse) {
         let func = liveRefs.get(idx);
-        func!(info);
         registeredStreams.push(info.BJID!);
+        func!(info);
     }
 
     function onMoveClick(idx: number) {
         swap(cur_main_index, idx);
         cur_main_index = idx;
         console.log("swaped Main with idx: ", idx);
-        console.log(indexes);
     }
 
     function onFlush(bjid: string) {
@@ -79,6 +70,7 @@
                 return val != bjid;
             });
         }
+        console.log(registeredStreams);
     }
 
     function swap(i: number, j: number) {
@@ -86,7 +78,6 @@
         [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
         // Svelte가 변경을 감지할 수 있도록 배열 전체를 새 배열로 재할당합니다.
         indexes = [...indexes];
-        console.log("indexes: ", indexes);
     }
 
     let popupIdx: number = 0;
@@ -115,13 +106,7 @@
     <div class="sidebar e">
         <Sidebar liveWrap={liveWrapper} bind:doFixMainVol bind:doFixQuality />
     </div>
-    <div
-        class="live-wrapper"
-        bind:this={liveWrapper}
-        on:resize={() => {
-            console.log(liveWrapper.clientWidth);
-        }}
-    >
+    <div class="live-wrapper" bind:this={liveWrapper}>
         {#each indexes as index, i}
             <live class="live-{index.id}">
                 <Live
@@ -147,7 +132,7 @@
         width: 100%;
 
         grid-template-columns: auto minmax(960px, 1fr) auto;
-        grid-template-rows: auto minmax(602px, 1fr) auto;
+        grid-template-rows: auto minmax(500px, 1fr) auto;
     }
 
     .flex-canvas > * {

@@ -1,53 +1,75 @@
 <script lang="ts">
-    import { onMount } from "svelte";
-    import type { carouselItemInfo } from "./carouselItemInfo";
+    import { carouselItemInfo } from "$lib";
 
-    // 슬라이더에 표시할 아이템들을 props로 받을 수 있습니다
-    export let items: carouselItemInfo[] = [];
+    let {
+        items = [
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+            new carouselItemInfo("1", "123"),
+        ],
+        selectedID = $bindable(undefined),
+    } = $props<{
+        items?: carouselItemInfo[];
+        selectedID?: string;
+    }>();
 
-    let carousel: HTMLDivElement;
-    let containerWidth = 0;
-    let itemWidth = 0;
-    let currentIndex = 0;
-    let visibleItems = 0;
-    let transform = "translateX(0px)";
+    // 상태 변수들
+    let carousel = $state<HTMLDivElement | null>(null);
+    let containerWidth = $state(0);
+    let itemWidth = $state(0);
+    let currentIndex = $state(0);
+    let visibleItems = $state(0);
+    let transform = $state("translateX(0px)");
 
-    export let selectedID: string | undefined;
+    // 파생 상태
+    let isPrevDisabled = $derived(currentIndex <= 0);
+    let isNextDisabled = $derived(
+        currentIndex >= items.length - visibleItems - 1,
+    );
 
-    // 버튼 상태
-    $: isPrevDisabled = currentIndex <= 0;
-    $: isNextDisabled = currentIndex >= items.length - visibleItems - 1;
+    // DOM 요소 측정과 업데이트
+    function measureItem() {
+        if (!carousel) return;
 
-    onMount(() => {
-        // 컴포넌트가 마운트된 후 아이템 너비 계산
         const firstItem = carousel.querySelector(".carousel-item");
-        if (firstItem) {
-            console.log("clientwidth: ", firstItem.clientWidth);
-            itemWidth =
-                firstItem.clientWidth +
-                parseInt(getComputedStyle(firstItem).marginRight);
+        if (!firstItem) {
+            visibleItems = 0;
+            return;
+        }
 
-            // 보이는 아이템 수 계산
-            updateVisibleItems();
+        itemWidth =
+            firstItem.clientWidth +
+            parseInt(getComputedStyle(firstItem).marginRight);
+        updateVisibleItems();
+    }
+
+    // 컨테이너 너비 변경 시 측정 업데이트
+    $effect(() => {
+        if (containerWidth > 0 && carousel) {
+            measureItem();
         }
     });
 
-    // 컨테이너 너비가 변경될 때 보이는 아이템 수를 업데이트
-    $: if (containerWidth > 0) {
-        const firstItem = carousel.querySelector(".carousel-item");
-
-        if (!firstItem) {
-            visibleItems = 0;
-        } else {
-            itemWidth =
-                firstItem.clientWidth +
-                parseInt(getComputedStyle(firstItem).marginRight);
-            updateVisibleItems();
+    // 컴포넌트 초기화 및 아이템 변경 시
+    $effect(() => {
+        if (carousel && items.length > 0) {
+            // 아이템이 로드된 후 측정을 위한 지연 실행
+            setTimeout(measureItem, 0);
         }
-    }
+    });
 
     function updateVisibleItems() {
+        if (itemWidth <= 0) return;
+
         visibleItems = Math.floor(containerWidth / itemWidth);
+
         // 현재 인덱스가 유효 범위를 벗어나면 조정
         if (currentIndex > items.length - visibleItems) {
             goToSlide(Math.max(0, items.length - visibleItems));
@@ -62,65 +84,61 @@
 
     // 이전 슬라이드로 이동
     function prevSlide() {
-        if (currentIndex > 0) {
+        if (!isPrevDisabled) {
             goToSlide(currentIndex - 6);
         }
-        console.log("currentIndex : ", currentIndex);
     }
 
     // 다음 슬라이드로 이동
     function nextSlide() {
-        if (currentIndex < items.length - visibleItems) {
+        if (!isNextDisabled) {
             goToSlide(currentIndex + 6);
         }
     }
 
     function selectItem(id: carouselItemInfo["id"]) {
-        if (selectedID == id) {
-            deselectItem();
-        } else {
-            selectedID = id;
-        }
-    }
-
-    function deselectItem() {
-        selectedID = undefined;
+        selectedID = selectedID === id ? undefined : id;
     }
 </script>
 
 <div class="carousel-wrap">
     <button
         class="carousel-button prev"
-        on:click={prevSlide}
+        onclick={prevSlide}
         disabled={isPrevDisabled}
         aria-label="이전 슬라이드"
     >
     </button>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
+
     <div class="carousel-container" bind:clientWidth={containerWidth}>
-        {items.length == 0 ? "등록된 항목이 없습니다." : ""}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-            class="carousel"
-            bind:this={carousel}
-            style="transform: {transform}"
-        >
-            {#each items as item, i}
-                <div
-                    class="carousel-item"
-                    class:selected={item.id == selectedID}
-                    on:click={() => {
-                        selectItem(item.id);
-                    }}
-                >
-                    {item.nick}
-                </div>
-            {/each}
-        </div>
+        {#if items.length === 0}
+            <div class="empty-message">등록된 항목이 없습니다.</div>
+        {:else}
+            <div
+                class="carousel"
+                bind:this={carousel}
+                style="transform: {transform}"
+            >
+                {#each items as item}
+                    <div
+                        class="carousel-item"
+                        class:selected={item.id === selectedID}
+                        onclick={() => selectItem(item.id)}
+                        role="button"
+                        tabindex="0"
+                        onkeydown={(e) =>
+                            e.key === "Enter" && selectItem(item.id)}
+                    >
+                        {item.nick}
+                    </div>
+                {/each}
+            </div>
+        {/if}
     </div>
+
     <button
         class="carousel-button next"
-        on:click={nextSlide}
+        onclick={nextSlide}
         disabled={isNextDisabled}
         aria-label="다음 슬라이드"
     >
@@ -129,6 +147,7 @@
 
 <style>
     .carousel-wrap {
+        box-sizing: border-box;
         position: relative;
         display: flex;
         width: 100%;
@@ -142,10 +161,16 @@
         color: gray;
         font-size: large;
         position: relative;
-        width: 100% - 30px;
+        width: 100%;
         overflow: hidden;
         margin-top: 0;
         margin-bottom: 0;
+        padding: 32px;
+    }
+
+    .empty-message {
+        text-align: center;
+        padding: 20px;
     }
 
     .carousel {
@@ -171,6 +196,7 @@
         transition:
             min-width 0.3s,
             height 0.3s;
+        cursor: pointer;
     }
 
     .carousel-item.selected {
@@ -195,7 +221,7 @@
         position: absolute;
         top: 50%;
         transform: translateY(-50%);
-        width: 20px;
+        width: 25px;
         height: 100px;
         background-color: rgba(255, 255, 255, 0.7);
         border: none;
@@ -214,7 +240,7 @@
     }
 
     .carousel-button[disabled] {
-        opacity: 0.5;
+        opacity: 0.4;
         cursor: default;
     }
 
@@ -230,7 +256,6 @@
         right: 0px;
     }
 
-    /* 좌우 블러 효과 */
     .carousel-container::before,
     .carousel-container::after {
         content: "";

@@ -1,7 +1,5 @@
+import { AIDError, PlaylistError, proxy_url, type LiveInfoResponse } from "$lib";
 
-import type { LiveInfoResponse } from './LiveInfoResponse';
-import { AIDError, PlaylistError } from './liveErrors';
-import { proxy_url } from '../utils/util';
 
 class streamInfo {
     uri: string;
@@ -16,6 +14,9 @@ class streamInfo {
         this.resolution = resolution;
     }
 }
+
+const LIVE_CHECK = "https://live.sooplive.co.kr/afreeca/player_live_api.php"
+const GET_STREAM_URL = "https://livestream-manager.sooplive.co.kr/broad_stream_assign.html"
 
 export class LiveFetcher {
     private _liveInfo?: LiveInfoResponse | undefined;
@@ -54,13 +55,15 @@ export class LiveFetcher {
         const broad_key: string = `${info.BNO}-common-${quality}-hls`
 
         const stream_url_res = await fetch(
-            proxy_url({ url: GET_STREAM_URL, query: { "return_type": cdn_val, "broad_key": broad_key } })
+            proxy_url({ url: GET_STREAM_URL, query: { "return_type": cdn_val, "broad_key": broad_key } }), {
+            method: "GET",
+        }
         )
 
         return stream_url_res
             .json()
             .then((data) => {
-                return data.get("view_url") as string
+                return data["view_url"] as string
             })
             .catch((err) => { throw new Error(`Error from Fetching: ${err}`) })
     }
@@ -70,8 +73,8 @@ export class LiveFetcher {
             proxy_url({ url: LIVE_CHECK }), {
             method: "POST",
             headers: {
-                "Origin": "https://live.sooplive.co.kr",
-                "Referer": "https://live.sooplive.co.kr/",
+                "Origin": "https://play.sooplive.co.kr",
+                "Referer": "https://play.sooplive.co.kr/",
                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             },
             body: JSON.stringify({ "type": "aid", "bno": info.BNO, "quality": quality, "pwd": password })
@@ -79,7 +82,7 @@ export class LiveFetcher {
 
         return aid_key_res
             .json()
-            .then((data) => { return data.get("CHANNEL").get("AID") as string })
+            .then((data) => { return data["CHANNEL"]["AID"] as string })
             .catch((err) => { throw new Error(`Error from Fetching: ${err}`) })
     }
 
