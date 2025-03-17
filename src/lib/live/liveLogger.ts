@@ -1,4 +1,4 @@
-import type { LiveInfoResponse } from '../models/liveInfoResponse';
+import type { LiveInfoResponse } from "$lib";
 
 const DC1 = "\u0011"
 const DC2 = "\u0012"

@@ -2,8 +2,12 @@
     import { onMount, onDestroy } from "svelte";
     // import Hls from "hls.js";
     import Hls, { Level } from "hls.js";
-    import { LiveFetcher, LiveLogger, ChatSocket } from "$lib";
-    import type { LiveInfoResponse } from "$lib";
+    import {
+        LiveFetcher,
+        LiveLogger,
+        ChatSocket,
+        type LiveInfoResponse,
+    } from "$lib";
 
     // DOM 요소 바인딩
     let input_layer = $state<HTMLElement | null>(null);

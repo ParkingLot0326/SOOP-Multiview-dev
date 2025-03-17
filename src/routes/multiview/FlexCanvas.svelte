@@ -1,7 +1,6 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
-    import type { LiveInfoResponse } from "$lib";
-    import { Popup, Live, Sidebar } from "$lib";
+    import { type LiveInfoResponse, Popup, Live, Sidebar } from "$lib";
     import { v4 as uuidv4 } from "uuid";
 
     const MINWIDTH = 640;

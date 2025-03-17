@@ -4,7 +4,7 @@
     import EventBubble from "./EventBubble.svelte";
     import ChatBubble from "./ChatBubble.svelte";
 
-    import { eventType, type eventData } from "$lib/models";
+    import { eventType, type eventData } from "$lib";
 
     let {
         onMessage,
