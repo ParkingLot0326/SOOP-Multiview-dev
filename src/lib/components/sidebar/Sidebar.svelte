@@ -4,6 +4,7 @@
     import "@fortawesome/fontawesome-free/css/all.min.css";
     import Chat from "./Chat.svelte";
     import { ChatSocket } from "$lib";
+    import { onMount } from "svelte";
 
     const sidebarWidth = 280;
     const viewportMinHeight = 580;
@@ -15,22 +16,25 @@
     let expander: HTMLElement | undefined = $state(undefined);
     let isExpanded = $state(false);
     let beforeWidth: number | null;
+    let mainVol = $state(50);
 
     let {
         doFixMainVol = $bindable(),
         doFixQuality = $bindable(),
         doShrinkDelay = $bindable(),
         doDelayChat = $bindable(),
-        mainVol = $bindable(),
-        mainChatSocket = $bindable(),
+        // mainVol = $bindable(),
+        mainChatSocket,
+        delay,
         liveWrap,
     }: {
         doFixMainVol: boolean;
         doFixQuality: boolean;
         doShrinkDelay: boolean;
         doDelayChat: boolean;
-        mainVol: number;
-        mainChatSocket: ChatSocket;
+        // mainVol: number;
+        mainChatSocket: ChatSocket | undefined;
+        delay: number;
         liveWrap: HTMLElement;
     } = $props();
 
@@ -182,11 +186,10 @@
 
     <div class="content" class:expanded={isExpanded} class:selected={chatOpen}>
         <Chat
-            onMessage={() => {}}
-            onEvent={() => {}}
-            disconnect={() => {}}
             handleSendMessage={() => {}}
-            bind:socket={mainChatSocket}
+            disconnect={() => {}}
+            socket={mainChatSocket!}
+            {delay}
         />
     </div>
 </div>
@@ -288,7 +291,7 @@
         transition-duration: 0.1s, 0.3s, 0.3s;
         transition-timing-function: ease-in-out, ease-in-out, auto;
         border-radius: 24px;
-        border: 1px solid gray;
+        border: 1px solid rgb(185, 185, 185);
         margin-top: 4px;
     }
 
@@ -301,7 +304,8 @@
     .content.selected {
         flex-grow: 1;
         opacity: 1;
-        padding-bottom: 24px;
+        padding-bottom: 12px;
+        justify-content: end;
         transition-property: margin, flex-grow;
         transition-duration: 0.1s, 0.3s;
         transition-timing-function: ease-in, ease-in-out;

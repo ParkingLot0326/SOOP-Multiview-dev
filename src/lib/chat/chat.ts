@@ -7,94 +7,52 @@ const FF: string = String.fromCharCode(12)
 const ESC: string = String.fromCharCode(27)
 
 export class ChatSocket {
+    public onMessage?: () => void;
+    public onFlush: () => void;
+    public onConnect: () => void;
+
+    public savedChatThreshold: number = 50;
+    public chatRules: chatRules = {
+        showBalloons: true,
+        showKicks: true,
+        showSubscriptions: true,
+        showFollows: true,
+        showMission: true,
+        showMissionSettle: true,
+    };
+    public chatItems: eventData[] = [];
+
     private websocket: WebSocket | undefined;
     private PingPacket: string = `${ESC}${BK}000000000100${FF}`
 
     private decoder = new TextDecoder("utf-8")
     private encoder = new TextEncoder()
+
     private keepAlive: NodeJS.Timeout | undefined;
+    private pruner: NodeJS.Timeout | undefined;
 
-    public onMessage: () => void;
-    public onFlush: () => void;
-
-    public savedChatThreshold: number;
-    public chatDelay: number;
-    public chatRules: chatRules;
-
-    private elementTimers: Map<Number, NodeJS.Timeout> = new Map<Number, NodeJS.Timeout>();
-
-    private _chatItems: eventData[] = [];
     private globalIndex: number = 0;
-    private displayItemsSet = new Set<number>(); // idx 기반 빠른 검색용 Set
 
-    private get chatItems(): eventData[] {
-        return this._chatItems;
-    }
-
-    private set chatItems(value: eventData[]) {
-        // 이미 표시된 아이템의 ID를 추적
-        if (!this.displayItemsSet.size && this._displayItems.length) {
-            // 초기화: 기존 displayItems의 idx를 Set에 추가
-            this._displayItems.forEach(item => this.displayItemsSet.add(item.idx));
-        }
-
-        // O(n) 복잡도로 새 항목만 필터링
-        const newItems = value.filter(item => !this.displayItemsSet.has(item.idx));
-
-        // 배치 처리를 위한 큐 관리
-        newItems.forEach(item => {
-            if (!this.elementTimers.has(item.idx)) {
-                this.elementTimers.set(
-                    item.idx,
-                    setTimeout(() => {
-                        // 타이머 실행 시 displayItems와 Set 모두 업데이트
-                        this._displayItems = [...this._displayItems, item];
-                        this.displayItemsSet.add(item.idx);
-                        this.elementTimers.delete(item.idx);
-                    }, this.chatDelay)
-                );
-            }
-        });
-
-        // 채팅 항목 제한 관리 (성능 최적화)
-        if (value.length > this.savedChatThreshold) {
-            // 제한을 초과할 경우 최신 메시지만 유지
-            const sliceStartIndex = value.length - this.savedChatThreshold;
-            this._chatItems = value.slice(sliceStartIndex);
-        } else {
-            this._chatItems = value;
-        }
-    }
-
-    private _displayItems: eventData[] = [];
-
-    public get displayItems(): eventData[] {
-        return this._displayItems;
-    }
-
-    private set displayItems(value: eventData[]) {
-        // Set 업데이트
-        this.displayItemsSet.clear();
-        value.forEach(item => this.displayItemsSet.add(item.idx));
-        this._displayItems = value;
-    }
+    public id: string = "";
 
     constructor(
-        onMessage: () => void,
         onFlush: () => void,
+        onConnection: () => void,
         savedChatThreshold: number = 100,
-        chatDelay: number = 2000,
-        chatRules: chatRules
+        chatRules?: chatRules,
+        onMessage?: () => void,
     ) {
-        this.onMessage = onMessage
         this.onFlush = onFlush
+        this.onConnect = onConnection
         this.savedChatThreshold = savedChatThreshold
-        this.chatDelay = chatDelay
-        this.chatRules = chatRules
+        if (onMessage) this.onMessage = onMessage
+        if (chatRules) this.chatRules = chatRules
     }
 
     public async initializeWebSocket(info: LiveInfoResponse, cookie: string): Promise<boolean> {
         console.log("Initializing Chat WebSocket...")
+
+        this.id = info.BJID
 
         if (info.CHATNO == undefined || info.CHDOMAIN == undefined || info.CHPT == undefined) {
             console.log("Chat Not Available: LiveInfo Successfully Fetched, but not containing essential data.")
@@ -128,6 +86,13 @@ export class ChatSocket {
                     break;
                 case "0002":
                     console.log("JOIN")
+
+                    this.keepAlive = setInterval(() => {
+                        ws.send(this.PingPacket)
+                    }, 30000)
+                    this.pruner = setInterval(() => { this.prune_old_chat }, 1000)
+
+                    this.onConnect()
                     break;
                 case "0004": {
                     console.log("CHUSER")
@@ -353,16 +318,13 @@ export class ChatSocket {
         ws.onopen = (e) => {
             console.log("Chat Socket Open")
             ws.send(this.makeInitPacket(cookie))
-
-            this.keepAlive = setInterval(() => {
-                ws.send(this.PingPacket)
-            }, 30000)
         }
 
         ws.onerror = (e) => {
             console.error("Chat Socket Error")
             console.error(e)
             if (this.keepAlive) clearInterval(this.keepAlive)
+            if (this.pruner) clearInterval(this.pruner)
             this.websocket = undefined
             this.onFlush()
         }
@@ -370,6 +332,7 @@ export class ChatSocket {
         ws.onclose = (e) => {
             console.log("Chat Socket Closed: ", e)
             if (this.keepAlive) clearInterval(this.keepAlive)
+            if (this.pruner) clearInterval(this.pruner)
             this.websocket = undefined
             this.onFlush()
         }
@@ -389,6 +352,12 @@ export class ChatSocket {
 
     public close() {
         if (this.websocket?.readyState == 0 || this.websocket?.readyState == 1) { this.websocket.close() }
+    }
+
+    private prune_old_chat() {
+        if (this.chatItems.length > this.savedChatThreshold) {
+            this.chatItems = this.chatItems.slice(this.chatItems.length - this.savedChatThreshold)
+        }
     }
 
     private handle_new_event(event: eventData) {
@@ -429,7 +398,6 @@ export class ChatSocket {
 
         if (doRecord) {
             this.chatItems = [...this.chatItems, event];
-            this.onMessage();
         }
 
     }

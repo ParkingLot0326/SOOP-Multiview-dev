@@ -5,28 +5,82 @@
     import { ChatBubble, EventBubble } from "./bubble";
 
     let {
-        onMessage,
-        onEvent,
         handleSendMessage,
         disconnect,
-        socket = $bindable(),
+        socket,
+        delay,
     }: {
-        onMessage: () => void;
-        onEvent: () => void;
         handleSendMessage: () => void;
         disconnect: () => void;
         socket: ChatSocket;
+        delay: number;
     } = $props();
 
-    onMessage = () => {
-        console.log("message received");
-    };
+    let chatItems: eventData[] = $state([]);
+    let updateTimer: NodeJS.Timeout | undefined = undefined;
 
-    onEvent = () => {
-        console.log("event received");
-    };
+    let chatDisplay: HTMLElement;
+    let shouldAutoScroll = true;
+    let lastScrollTop = 0;
+    let lastScrollHeight = 0;
 
-    let chatItems: eventData[] = $derived(socket.displayItems);
+    onMount(() => {
+        updateTimer = setInterval(() => {
+            chatItems = socket ? socket.chatItems : [];
+            if (socket) console.log(socket.id);
+        }, 150);
+        socket;
+
+        return () => {
+            clearInterval(updateTimer);
+        };
+    });
+
+    $effect(() => {
+        const items = $state.snapshot(chatItems);
+        if (items.length > 0) {
+            scrollToBottom();
+        }
+    });
+
+    function scrollToBottom() {
+        // 다음 틱에 스크롤 이동 (DOM 업데이트 후)
+        setTimeout(() => {
+            if (shouldAutoScroll && chatDisplay) {
+                // 현재 스크롤 위치 저장
+                lastScrollHeight = chatDisplay.scrollHeight;
+                lastScrollTop = chatDisplay.scrollTop;
+
+                // 스크롤을 맨 아래로 이동
+                chatDisplay.scrollTop = chatDisplay.scrollHeight;
+            }
+        }, 0);
+    }
+
+    function handleScroll() {
+        // 스크롤바가 거의 맨 아래에 있는지 확인
+        const isAtBottom =
+            chatDisplay.scrollHeight -
+                chatDisplay.scrollTop -
+                chatDisplay.clientHeight <
+            50;
+
+        // 사용자가 위로 스크롤한 경우 자동 스크롤 비활성화
+        if (!isAtBottom) {
+            shouldAutoScroll = false;
+        }
+
+        // 사용자가 맨 아래로 스크롤한 경우 자동 스크롤 재활성화
+        if (
+            chatDisplay.scrollTop + chatDisplay.clientHeight >=
+            chatDisplay.scrollHeight - 10
+        ) {
+            shouldAutoScroll = true;
+        }
+
+        // 현재 스크롤 위치 저장
+        lastScrollTop = chatDisplay.scrollTop;
+    }
 
     function buildPconSrc() {
         return "";
@@ -38,7 +92,7 @@
 </script>
 
 <div class="chat-display-wrap">
-    <div class="chat-display">
+    <div class="chat-display" bind:this={chatDisplay} onscroll={handleScroll}>
         {#each chatItems as item}
             {#if item.eventType == eventType.MESSAGE}
                 <ChatBubble
@@ -97,6 +151,8 @@
         width: 100%;
         height: 50px;
         margin-top: 6px;
+        margin-left: 6px;
+        margin-right: 6px;
         padding: 0px 12px;
         border-radius: 12px;
         box-sizing: border-box;
@@ -106,6 +162,7 @@
         flex: 0 1 auto;
         position: relative;
         width: 100%;
+        margin: 10px 0px;
         height: 100%;
     }
 

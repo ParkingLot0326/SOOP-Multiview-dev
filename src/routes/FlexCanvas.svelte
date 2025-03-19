@@ -1,6 +1,12 @@
 <script lang="ts">
     import { onDestroy, onMount } from "svelte";
-    import { type LiveInfoResponse, Popup, Live, Sidebar } from "$lib";
+    import {
+        type LiveInfoResponse,
+        Popup,
+        Live,
+        Sidebar,
+        ChatSocket,
+    } from "$lib";
     import { v4 as uuidv4 } from "uuid";
 
     const MINWIDTH = 640;
@@ -12,16 +18,48 @@
 
     let canvas: HTMLElement;
     let popup: Popup;
-    let liveWrapper: HTMLElement;
+    let liveWrapper: HTMLElement | undefined = $state(undefined);
+    let mainChatSocket: ChatSocket | undefined = $state(undefined);
 
-    let doFixMainVol = false;
-    let doFixQuality = false;
+    let doFixMainVol = $state(false);
+    let doFixQuality = $state(false);
+    let doShrinkDelay = $state(false);
+    let doDelayChat = $state(false);
+    let delay = $state(2000);
 
-    let cur_main_index = 0;
+    let cur_main_index = $state(0);
 
+    let indexes = $state([0, 1, 2, 3, 4, 5, 6, 7]);
     let liveRefs: Map<number, (info: LiveInfoResponse) => Promise<void>> =
         new Map();
-    liveRefs.clear();
+    let liveComponents = $state<Record<number, any>>({});
+
+    let registeredStreams: string[] = $state([]);
+    let popupIdx: number = $state(0);
+
+    function update_socket() {
+        const mainComponent = liveComponents[cur_main_index];
+
+        if (
+            mainComponent &&
+            typeof mainComponent.getChatSocket === "function"
+        ) {
+            try {
+                const chatSocket = mainComponent.getChatSocket();
+                mainChatSocket = chatSocket;
+                console.log("메인 채팅 소켓이 업데이트되었습니다.");
+            } catch (error) {
+                console.error(
+                    "채팅 소켓을 가져오는 중 오류가 발생했습니다:",
+                    error,
+                );
+            }
+        } else {
+            console.warn(
+                "메인 컴포넌트가 없거나 getChatSocket 메서드가 없습니다.",
+            );
+        }
+    }
 
     function register(
         id: number,
@@ -29,19 +67,6 @@
     ) {
         liveRefs.set(id, component);
     }
-
-    let indexes = [
-        { id: 0 },
-        { id: 1 },
-        { id: 2 },
-        { id: 3 },
-        { id: 4 },
-        { id: 5 },
-        { id: 6 },
-        { id: 7 },
-    ];
-
-    let registeredStreams: string[] = [];
 
     function showPopup(idx: number) {
         popup.showPopup(idx);
@@ -60,6 +85,7 @@
     function onMoveClick(idx: number) {
         swap(cur_main_index, idx);
         cur_main_index = idx;
+        update_socket();
         console.log("swaped Main with idx: ", idx);
     }
 
@@ -72,21 +98,32 @@
         console.log(registeredStreams);
     }
 
+    function onConnect() {
+        console.log("connect");
+        update_socket();
+    }
+
     function swap(i: number, j: number) {
+        if (i == j) return;
         // 배열의 두 요소를 구조 분해 할당으로 스왑합니다.
         [indexes[i], indexes[j]] = [indexes[j], indexes[i]];
         // Svelte가 변경을 감지할 수 있도록 배열 전체를 새 배열로 재할당합니다.
         indexes = [...indexes];
     }
 
-    let popupIdx: number = 0;
-
     onMount(() => {
         window.addEventListener("click", hidePopup);
+
+        const preventContextMenu = (event: Event) => {
+            event.preventDefault();
+        };
+
+        document.addEventListener("contextmenu", preventContextMenu);
 
         // 컴포넌트가 제거될 때 이벤트 리스너 정리
         return () => {
             window.removeEventListener("click", hidePopup);
+            document.removeEventListener("contextmenu", preventContextMenu);
         };
     });
 </script>
@@ -103,17 +140,27 @@
     <div class="sidebar s"></div>
     <div class="sidebar w"></div>
     <div class="sidebar e">
-        <Sidebar liveWrap={liveWrapper} bind:doFixMainVol bind:doFixQuality />
+        <Sidebar
+            liveWrap={liveWrapper!}
+            bind:doFixMainVol
+            bind:doFixQuality
+            bind:doShrinkDelay
+            bind:doDelayChat
+            {mainChatSocket}
+            {delay}
+        />
     </div>
     <div class="live-wrapper" bind:this={liveWrapper}>
         {#each indexes as index, i}
-            <live class="live-{index.id}">
+            <live class="live-{index}">
                 <Live
+                    bind:this={liveComponents[i]}
                     idx={i}
                     {uuid}
                     {guid}
                     {onFlush}
                     {onMoveClick}
+                    {onConnect}
                     {showPopup}
                     {register}
                 />

@@ -33,15 +33,17 @@
             levelLoadingRetryDelay: 100,
             levelLoadingMaxRetry: 20,
             levelLoadingMaxRetryTimeout: 20000,
-            lowLatencyMode: false,
+            lowLatencyMode: true,
             liveBackBufferLength: 10,
-            initialLiveManifestSize: 1,
+            initialLiveManifestSize: 0,
+            backBufferLength: 30,
             ignoreDevicePixelRatio: true,
             liveSyncDuration: 2,
-            liveMaxLatencyDuration: 4,
-            maxStarvationDelay: 10,
-            maxAudioFramesDrift: 0,
-            nudgeMaxRetry: 20,
+            liveMaxLatencyDuration: 5,
+            maxStarvationDelay: 0,
+            maxAudioFramesDrift: 1,
+            nudgeMaxRetry: 30,
+            enableWorker: true,
         }),
     );
 
@@ -52,6 +54,7 @@
     let errorCount = $state<number>(0);
 
     let liveInfo = $state<LiveInfoResponse | undefined>(undefined);
+    let chatSocket: ChatSocket;
 
     // props 정의
     let {
@@ -59,6 +62,7 @@
         showPopup,
         onMoveClick,
         onFlush,
+        onConnect,
         register,
         uuid,
         guid,
@@ -67,6 +71,7 @@
         showPopup: (idx: number) => void;
         onMoveClick: (idx: number) => void;
         onFlush: (bjid: string) => void;
+        onConnect: () => void;
         register: (
             idx: number,
             component: (info: LiveInfoResponse) => Promise<void>,
@@ -77,42 +82,33 @@
 
     let liveFetcher = $state<LiveFetcher | null>(null);
     let liveLogger = $state<LiveLogger | null>(null);
-    let chatSocket = $state<ChatSocket | null>(null);
+    // let chatSocket = $state<ChatSocket | null>(null);
 
     let userCount = $state<number>(0);
+
+    export function getChatSocket() {
+        return chatSocket;
+    }
 
     // 컴포넌트 초기화
     onMount(() => {
         register(idx, set_stream);
 
-        const preventContextMenu = (event: Event) => {
-            event.preventDefault();
-        };
-
-        document.addEventListener("contextmenu", preventContextMenu);
         showLayer(input_layer!);
 
         liveFetcher = new LiveFetcher();
         liveLogger = new LiveLogger(uuid, guid, onUserUpdate, onCrash);
-        chatSocket = new ChatSocket(
-            () => {},
-            () => {},
-            undefined,
-            undefined,
-            {
-                showBalloons: true,
-                showFollows: true,
-                showKicks: true,
-                showMission: true,
-                showMissionSettle: true,
-                showSubscriptions: true,
-            },
-        );
+        if (!chatSocket) {
+            chatSocket = new ChatSocket(
+                () => {},
+                () => {},
+                undefined,
+            );
+        }
         liveInfo = undefined;
 
         // cleanup function
         return () => {
-            document.removeEventListener("contextmenu", preventContextMenu);
             flush();
             hls.destroy();
         };
@@ -176,7 +172,6 @@
 
         hls.loadSource(proxy_url);
         hls.attachMedia(videoElement!);
-        videoElement!.load();
         showLayer(player_layer!);
 
         hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
@@ -191,6 +186,7 @@
 
             liveLogger!.initializeWebSocket(info);
             chatSocket!.initializeWebSocket(info, document.cookie);
+            onConnect();
             liveInfo = info;
         });
 
