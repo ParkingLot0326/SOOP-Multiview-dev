@@ -5,7 +5,7 @@ interface RequestInfo {
 }
 
 export function proxy_url(params: RequestInfo): string {
-    let proxy = `http://proxy.localhost`
+    let proxy = `http://smtv.localhost`
     if (params.path) {
         proxy += `/${params.path}`
     } else {

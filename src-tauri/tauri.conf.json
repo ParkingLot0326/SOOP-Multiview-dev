@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'unsafe-inline' 'self' proxy: http: https: data: localhost:; media-src 'self' blob: http: https: localhost:; connect-src 'self' blob: http: https: localhost: wss:; style-src 'self' 'unsafe-inline';"
+      "csp": "default-src 'unsafe-inline' 'self' smtv: http: https: data: localhost:; media-src 'self' blob: http: https: localhost:; connect-src 'self' blob: http: https: localhost: wss:; style-src 'self' 'unsafe-inline';"
     }
   },
   "bundle": {

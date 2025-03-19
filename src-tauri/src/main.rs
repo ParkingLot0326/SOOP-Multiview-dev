@@ -2,16 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use m3u8_rs::{MasterPlaylist, MediaPlaylist, MediaSegment};
-use reqwest::{
-    blocking::{Client as BlockingClient, Response as BlockingResponse},
-    header::{HeaderMap, HeaderValue},
-    Client, Error,
-};
-use serde::{Deserialize, Serialize};
+use reqwest::{Client, Error};
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use tauri::{
-    http::{self, Method as HttpMethod, Response as TauriResponse},
-    Manager,
+    http::{self, HeaderMap, HeaderValue, Method as HttpMethod, Response as TauriResponse},
+    Manager, UriSchemeResponder,
 };
 use urlencoding::encode;
 
@@ -30,8 +26,8 @@ fn initialize() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("실행 파일의 부모 디렉토리를 찾을 수 없습니다.")?;
 
     let data_dir: PathBuf = exe_dir.join("data");
-    let config_path: PathBuf = data_dir.join("config.json");
-    let crc_log_path: PathBuf = data_dir.join("crc.log");
+    let config_path: PathBuf = data_dir.join("smtv_config.json");
+    let crc_log_path: PathBuf = data_dir.join("smtv_log.log");
 
     if !data_dir.exists() {
         println!("데이터 폴더가 존재하지 않으므로 새로 생성합니다.");
@@ -42,17 +38,17 @@ fn initialize() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if !config_path.exists() {
-        println!("config.json 파일이 존재하지 않으므로 새로 생성합니다.");
+        println!("컨픽 파일이 존재하지 않으므로 새로 생성합니다.");
         File::create(&config_path)?;
     } else {
-        println!("config.json 파일이 이미 존재합니다.");
+        println!("컨픽 파일이 이미 존재합니다.");
     }
 
     if !crc_log_path.exists() {
-        println!("crc.log 파일이 존재하지 않으므로 새로 생성합니다.");
+        println!("로그 파일이 존재하지 않으므로 새로 생성합니다.");
         File::create(&crc_log_path)?;
     } else {
-        println!("crc.log 파일이 이미 존재합니다.");
+        println!("로그 파일이 이미 존재합니다.");
     }
 
     println!("초기화가 완료되었습니다.");
@@ -84,37 +80,6 @@ fn create_client() -> Client {
         .default_headers(headers)
         .build()
         .expect("Client 생성에 실패했습니다.")
-}
-
-fn create_blocking_client() -> BlockingClient {
-    let mut headers: HeaderMap = HeaderMap::new();
-    headers.insert(
-        "Origin",
-        HeaderValue::from_static("https://play.sooplive.co.kr"),
-    );
-    headers.insert(
-        "Referer",
-        HeaderValue::from_static("https://play.sooplive.co.kr/"),
-    );
-    headers.insert(
-            "User-Agent",
-            HeaderValue::from_static(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            ),
-        );
-    headers.insert("Accept", HeaderValue::from_static("*/*"));
-    headers.insert("Accept-Encoding", HeaderValue::from_static("deflate, br"));
-    headers.insert("Connection", HeaderValue::from_static("keep-alive"));
-
-    BlockingClient::builder()
-        .default_headers(headers)
-        .build()
-        .expect("BlockingClient 생성에 실패했습니다.")
-}
-
-#[derive(Deserialize, Debug, Serialize)]
-pub struct Body {
-    bid: String,
 }
 
 #[derive(Deserialize, serde::Serialize)]
@@ -163,18 +128,20 @@ fn parse_proxy_request(uri: &str) -> Result<HashMap<String, String>, String> {
     Ok(params)
 }
 
-fn custom_protocol(mut request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>> {
+async fn custom_protocol(mut request: http::Request<Vec<u8>>, responder: UriSchemeResponder) {
     let method: HttpMethod = request.method().to_owned();
     let body = request.body().to_owned();
     // 요청 URI 파싱 및 파라미터 추출
     let params: HashMap<String, String> = match parse_proxy_request(&request.uri().to_string()) {
         Ok(params) => params,
         Err(e) => {
-            return TauriResponse::builder()
+            let response = TauriResponse::builder()
                 .status(500)
                 .header("Content-Type", "text/plain")
                 .body(e.into_bytes())
                 .unwrap();
+            responder.respond(response);
+            return;
         }
     };
 
@@ -184,11 +151,13 @@ fn custom_protocol(mut request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>
         None => {
             let error_msg = "URL 파라미터가 없습니다.";
             println!("{}", error_msg);
-            return TauriResponse::builder()
+            let response = TauriResponse::builder()
                 .status(500)
                 .header("Content-Type", "text/plain")
                 .body(error_msg.as_bytes().to_vec())
                 .unwrap();
+            responder.respond(response);
+            return;
         }
     };
 
@@ -205,34 +174,22 @@ fn custom_protocol(mut request: http::Request<Vec<u8>>) -> TauriResponse<Vec<u8>
     );
 
     // HTTP 요청 수행
-    let client: BlockingClient = create_blocking_client();
+    let client: Client = create_client();
 
     let response: TauriResponse<Vec<u8>> = match request.uri().path() {
-        "/stream" => build_stream_response(client, url, headers),
-        "/stream/segment" => build_response(client, url, method, headers, Some(body)),
-        "/auth" => build_response(client, url, method, headers, Some(body)),
-        "/fetch" => build_response(client, url, method, headers, Some(body)),
-        _ => build_response(client, url, method, headers, Some(body)),
+        "/stream" => build_stream_response(client, url, headers).await,
+        "/stream/segment" => build_response(client, url, method, headers, Some(body)).await,
+        "/auth" => build_response(client, url, method, headers, Some(body)).await,
+        "/fetch" => build_response(client, url, method, headers, Some(body)).await,
+        _ => build_response(client, url, method, headers, Some(body)).await,
     };
 
-    return response;
-    // let response = match method.as_str() {
-    //     "GET" => client.get(url).headers(headers).query(&query).send(),
-    //     "POST" => client.post(url).headers(headers).form(&query).send(),
-    //     _ => {
-    //         let error_msg = format!("지원하지 않는 HTTP 메소드: {}", method);
-    //         println!("{}", error_msg);
-    //         return TauriResponse::builder()
-    //             .status(500)
-    //             .header("Content-Type", "text/plain")
-    //             .body(error_msg.as_bytes().to_vec())
-    //             .unwrap();
-    //     }
-    // };
-    // 응답 처리
+    responder.respond(response);
 }
 
-fn handle_response(resp: Result<BlockingResponse, reqwest::Error>) -> TauriResponse<Vec<u8>> {
+async fn handle_response(
+    resp: Result<reqwest::Response, reqwest::Error>,
+) -> TauriResponse<Vec<u8>> {
     match resp {
         Ok(resp) => {
             let status: http::StatusCode = resp.status();
@@ -245,7 +202,7 @@ fn handle_response(resp: Result<BlockingResponse, reqwest::Error>) -> TauriRespo
                 .unwrap_or("application/octet-stream");
 
             // 응답 본문 처리
-            let body_bytes = match resp.bytes() {
+            let body_bytes = match resp.bytes().await {
                 Ok(bytes) => bytes,
                 Err(e) => {
                     let error_msg = format!("본문 읽기 실패: {}", e);
@@ -277,8 +234,8 @@ fn handle_response(resp: Result<BlockingResponse, reqwest::Error>) -> TauriRespo
     }
 }
 
-fn build_response(
-    client: BlockingClient,
+async fn build_response(
+    client: Client,
     url: &str,
     method: HttpMethod,
     headers: HeaderMap,
@@ -291,24 +248,24 @@ fn build_response(
         map = Map::new();
     }
 
-    let response: Result<BlockingResponse, Error> = match method {
-        HttpMethod::GET => client.get(url).headers(headers).send(),
-        HttpMethod::POST => client.post(url).headers(headers).form(&map).send(),
+    let response: Result<reqwest::Response, Error> = match method {
+        HttpMethod::GET => client.get(url).headers(headers).send().await,
+        HttpMethod::POST => client.post(url).headers(headers).form(&map).send().await,
         _ => {
             return build_error_response(400); // 400 Bad Request for invalid method
         }
     };
 
-    handle_response(response)
+    handle_response(response).await
 }
 
-fn build_stream_response(
-    client: BlockingClient,
+async fn build_stream_response(
+    client: Client,
     url: &str,
     headers: HeaderMap,
 ) -> TauriResponse<Vec<u8>> {
-    let original_response: Result<BlockingResponse, Error> =
-        client.get(url).headers(headers).send();
+    let original_response: Result<reqwest::Response, Error> =
+        client.get(url).headers(headers).send().await;
     match original_response {
         Ok(resp) => {
             let status = resp.status();
@@ -318,7 +275,7 @@ fn build_stream_response(
                 .and_then(|ct| ct.to_str().ok())
                 .unwrap_or("application/octet-stream");
 
-            let mut body_bytes = resp.bytes().unwrap();
+            let mut body_bytes = resp.bytes().await.unwrap();
             let mut buffer = Vec::new();
 
             if m3u8_rs::is_master_playlist(&body_bytes) {
@@ -429,14 +386,21 @@ fn build_error_response(status: u16) -> TauriResponse<Vec<u8>> {
     response
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let client = create_client();
     initialize().expect("초기화에 실패했습니다.");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_http::init())
-        .register_uri_scheme_protocol("proxy", move |_app_handle, request| {
-            custom_protocol(request)
-        })
+        .register_asynchronous_uri_scheme_protocol(
+            "smtv",
+            move |_app_handle, request, responder| {
+                tokio::task::spawn(async move {
+                    custom_protocol(request, responder).await;
+                });
+            },
+        )
         .manage(client)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
