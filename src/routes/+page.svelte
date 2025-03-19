@@ -1,5 +1,6 @@
 <script lang="ts">
   import FlexCanvas from "./FlexCanvas.svelte";
+  import "./fonts.css";
 </script>
 
 <!-- <div style="display: flex; flex-direction: column; height: 100%;">
